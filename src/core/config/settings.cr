@@ -1,0 +1,60 @@
+module KemalcrStarter
+  module Core
+    module Config
+      record Settings,
+        environment : String,
+        host : String,
+        port : Int32,
+        service_name : String,
+        version : String,
+        build_time : String,
+        git_sha : String,
+        database_url : String,
+        redis_url : String,
+        auth_login_throttle_limit : Int32,
+        auth_refresh_throttle_limit : Int32,
+        auth_throttle_window_seconds : Int32,
+        jwt_secret : String,
+        jwt_access_ttl_minutes : Int32,
+        jwt_refresh_ttl_days : Int32,
+        password_pepper : String,
+        password_hash_cost : Int32,
+        openapi_path : String,
+        migrations_path : String,
+        event_poll_interval_ms : Int32,
+        event_batch_size : Int32,
+        event_max_retries : Int32,
+        always_rescue : Bool do
+        def self.from_env(*, version : String) : Settings
+          environment = ENV["KEMAL_ENV"]? || "development"
+
+          new(
+            environment: environment,
+            host: ENV["HOST"]? || "0.0.0.0",
+            port: ENV["PORT"]?.try(&.to_i) || 3000,
+            service_name: ENV["APP_NAME"]? || "kemalcr_starter",
+            version: ENV["APP_VERSION"]? || version,
+            build_time: ENV["APP_BUILD_TIME"]? || "unknown",
+            git_sha: ENV["APP_GIT_SHA"]? || "unknown",
+            database_url: ENV["DATABASE_URL"]? || "postgres://postgres:postgres@postgres:5432/kemalcr_development",
+            redis_url: ENV["REDIS_URL"]? || "redis://redis:6379/0",
+            auth_login_throttle_limit: ENV["AUTH_LOGIN_THROTTLE_LIMIT"]?.try(&.to_i) || 5,
+            auth_refresh_throttle_limit: ENV["AUTH_REFRESH_THROTTLE_LIMIT"]?.try(&.to_i) || 10,
+            auth_throttle_window_seconds: ENV["AUTH_THROTTLE_WINDOW_SECONDS"]?.try(&.to_i) || 60,
+            jwt_secret: ENV["JWT_SECRET"]? || "change-me-in-real-environments",
+            jwt_access_ttl_minutes: ENV["JWT_ACCESS_TTL_MINUTES"]?.try(&.to_i) || 15,
+            jwt_refresh_ttl_days: ENV["JWT_REFRESH_TTL_DAYS"]?.try(&.to_i) || 30,
+            password_pepper: ENV["PASSWORD_PEPPER"]? || "change-me-in-real-environments",
+            password_hash_cost: ENV["BCRYPT_COST"]?.try(&.to_i) || (environment == "test" ? 4 : 10),
+            openapi_path: ENV["OPENAPI_PATH"]? || "openapi/openapi.yaml",
+            migrations_path: ENV["MIGRATIONS_PATH"]? || "db/migrations",
+            event_poll_interval_ms: ENV["EVENT_POLL_INTERVAL_MS"]?.try(&.to_i) || 100,
+            event_batch_size: ENV["EVENT_BATCH_SIZE"]?.try(&.to_i) || 50,
+            event_max_retries: ENV["EVENT_MAX_RETRIES"]?.try(&.to_i) || 5,
+            always_rescue: (ENV["ALWAYS_RESCUE"]? || "false") == "true"
+          )
+        end
+      end
+    end
+  end
+end

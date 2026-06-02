@@ -22,6 +22,9 @@ require "./infrastructure/db/organization_repository"
 require "./infrastructure/db/user_repository"
 require "./infrastructure/db/user_session_repository"
 require "./infrastructure/db/outbox_event_repository"
+require "./infrastructure/outbox/publisher_stats"
+require "./infrastructure/outbox/redis_notifier"
+require "./infrastructure/outbox/outbox_publisher"
 require "./infrastructure/jwt/token_provider"
 require "./infrastructure/redis/client_manager"
 require "./modules/identity/auth_service"
@@ -48,6 +51,7 @@ module KemalcrStarter
     @@me_service : Modules::Identity::MeService?
     @@organization_service : Modules::Organizations::OrganizationService?
     @@handler_registry : Core::Events::HandlerRegistry?
+    @@outbox_publisher : Infrastructure::Outbox::OutboxPublisher?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -103,6 +107,19 @@ module KemalcrStarter
       @@handler_registry ||= Core::Events::HandlerRegistry.new
     end
 
+    def self.outbox_publisher : Infrastructure::Outbox::OutboxPublisher
+      @@outbox_publisher ||= Infrastructure::Outbox::OutboxPublisher.new(
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        ),
+        handler_registry,
+        poll_interval: Time::Span.new(milliseconds: settings.event_poll_interval_ms),
+        batch_size: settings.event_batch_size,
+        max_retries: settings.event_max_retries,
+        redis_url: settings.redis_url
+      )
+    end
+
     def self.current_correlation_id : String?
       Kemal.config.context_storage["request_context"]?.try do |ctx|
         ctx.as(Core::Http::RequestContext).request_id
@@ -117,6 +134,7 @@ module KemalcrStarter
       @@me_service = nil
       @@organization_service = nil
       @@handler_registry = nil
+      @@outbox_publisher = nil
     end
 
     def self.configure : Nil
@@ -191,6 +209,8 @@ module KemalcrStarter
     def self.boot : Nil
       configure
       draw_routes
+      outbox_publisher.start
+      Kemal.config.shutdown { outbox_publisher.stop }
     end
   end
 end

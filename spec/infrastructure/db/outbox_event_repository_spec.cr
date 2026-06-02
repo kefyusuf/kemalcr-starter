@@ -184,13 +184,13 @@ describe KemalcrStarter::Infrastructure::DB::OutboxEventRepository do
       saved.not_nil!.last_error.should eq("something broke")
     end
 
-    it "clears locked_at after retry" do
+    it "sets locked_at for backoff after retry" do
       event = create_test_event
       repo.create(event)
       repo.next_batch(10)
-      repo.increment_retry(event.event_id, "retry")
+      repo.increment_retry(event.event_id, "retry", 1)
       saved = repo.find(event.event_id)
-      saved.not_nil!.locked_at.should be_nil
+      saved.not_nil!.locked_at.should_not be_nil
     end
   end
 
