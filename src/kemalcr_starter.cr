@@ -21,6 +21,7 @@ require "./infrastructure/db/organization_membership_repository"
 require "./infrastructure/db/organization_repository"
 require "./infrastructure/db/user_repository"
 require "./infrastructure/db/user_session_repository"
+require "./infrastructure/db/outbox_event_repository"
 require "./infrastructure/jwt/token_provider"
 require "./infrastructure/redis/client_manager"
 require "./modules/identity/auth_service"
@@ -46,6 +47,7 @@ module KemalcrStarter
     @@idempotency_service : Core::Idempotency::Service?
     @@me_service : Modules::Identity::MeService?
     @@organization_service : Modules::Organizations::OrganizationService?
+    @@handler_registry : Core::Events::HandlerRegistry?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -97,6 +99,16 @@ module KemalcrStarter
       )
     end
 
+    def self.handler_registry : Core::Events::HandlerRegistry
+      @@handler_registry ||= Core::Events::HandlerRegistry.new
+    end
+
+    def self.current_correlation_id : String?
+      Kemal.config.context_storage["request_context"]?.try do |ctx|
+        ctx.as(Core::Http::RequestContext).request_id
+      end
+    end
+
     def self.reset_services : Nil
       @@auth_service = nil
       @@auth_throttle = nil
@@ -104,6 +116,7 @@ module KemalcrStarter
       @@idempotency_service = nil
       @@me_service = nil
       @@organization_service = nil
+      @@handler_registry = nil
     end
 
     def self.configure : Nil
