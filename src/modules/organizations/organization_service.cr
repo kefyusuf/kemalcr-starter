@@ -5,7 +5,8 @@ module KemalcrStarter
     module Organizations
       class OrganizationService
         def initialize(@database : ::DB::Database,
-                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil)
+                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil,
+                       @rbac_service : Core::Rbac::AuthorizationService? = nil)
           @organization_repository = Infrastructure::DB::OrganizationRepository.new(@database)
           @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
           @user_repository = Infrastructure::DB::UserRepository.new(@database)
@@ -67,7 +68,7 @@ module KemalcrStarter
         def update_for_actor(actor_id : String, organization_id : String, slug : String?, name : String?)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot update this organization.") unless membership
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot update this organization.") unless can_manage_organization?(membership.not_nil!.role)
+          @rbac_service.try(&.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationUpdate, role: membership.not_nil!.role))
 
           normalized_slug = slug.nil? ? nil : normalize_slug(slug)
           normalized_name = name.nil? ? nil : name.strip
@@ -113,7 +114,7 @@ module KemalcrStarter
         def list_invitations_for_actor(actor_id : String, organization_id : String)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's invitations.") unless membership
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's invitations.") unless can_manage_organization?(membership.not_nil!.role)
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationListInvitations, role: membership.not_nil!.role)
 
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's invitations.") unless organization
@@ -126,7 +127,7 @@ module KemalcrStarter
         def invite_user_for_actor(actor_id : String, organization_id : String, email : String, role : String)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot invite users to this organization.") unless membership
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot invite users to this organization.") unless can_manage_organization?(membership.not_nil!.role)
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationInvite, role: membership.not_nil!.role)
 
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot invite users to this organization.") unless organization
@@ -173,7 +174,7 @@ module KemalcrStarter
         def revoke_invitation_for_actor(actor_id : String, organization_id : String, invitation_id : String)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless membership
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless can_manage_organization?(membership.not_nil!.role)
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationRevoke, role: membership.not_nil!.role)
 
           invitation = @membership_repository.find_pending(invitation_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless invitation
@@ -221,10 +222,6 @@ module KemalcrStarter
 
         private def generate_id(prefix : String) : String
           "#{prefix}_#{UUID.random}"
-        end
-
-        private def can_manage_organization?(role : String) : Bool
-          role == "owner" || role == "admin"
         end
 
         private def invite_role?(role : String) : Bool

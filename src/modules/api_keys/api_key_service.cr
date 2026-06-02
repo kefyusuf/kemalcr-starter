@@ -9,7 +9,8 @@ module KemalcrStarter
 
       class ApiKeyService
         def initialize(@settings : Core::Config::Settings, @database : ::DB::Database,
-                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil)
+                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil,
+                       @rbac_service : Core::Rbac::AuthorizationService? = nil)
           @api_key_repository = Infrastructure::DB::ApiKeyRepository.new(@database)
           @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
           @organization_repository = Infrastructure::DB::OrganizationRepository.new(@database)
@@ -17,7 +18,9 @@ module KemalcrStarter
         end
 
         def list_for_actor(actor_id : String, organization_id : String)
-          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot access this organization's API keys.")
+          membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
+          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's API keys.") unless membership
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::ApiKeyCreate, role: membership.not_nil!.role)
 
           @api_key_repository.list_active_for_organization(organization_id).map do |api_key|
             serialize_api_key(api_key)
@@ -25,7 +28,9 @@ module KemalcrStarter
         end
 
         def create_for_actor(actor_id : String, organization_id : String, name : String)
-          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot create API keys for this organization.")
+          membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
+          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot create API keys for this organization.") unless membership
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::ApiKeyCreate, role: membership.not_nil!.role)
 
           normalized_name = name.strip
           raise Core::Errors::ValidationError.new if normalized_name.empty?
@@ -44,7 +49,9 @@ module KemalcrStarter
         end
 
         def revoke_for_actor(actor_id : String, organization_id : String, api_key_id : String) : Nil
-          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot revoke API keys for this organization.")
+          membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
+          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke API keys for this organization.") unless membership
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::ApiKeyRevoke, role: membership.not_nil!.role)
 
           api_key = @api_key_repository.find_active_for_organization(api_key_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke API keys for this organization.") unless api_key
@@ -65,19 +72,13 @@ module KemalcrStarter
           AuthenticatedApiKey.new(api_key_id: api_key.not_nil!.id, organization_id: api_key.not_nil!.organization_id)
         end
 
-        private def authorize_manager!(actor_id : String, organization_id : String, message : String) : Nil
-          membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
-          raise Core::Errors::ForbiddenError.new(message) unless membership
-          raise Core::Errors::ForbiddenError.new(message) unless can_manage_organization?(membership.not_nil!.role)
-
-          organization = @organization_repository.find_active(organization_id)
-          raise Core::Errors::ForbiddenError.new(message) unless organization
+        private def generate_id(prefix : String) : String
+          "#{prefix}_#{UUID.random}"
         end
 
         private def serialize_api_key(api_key : Infrastructure::DB::ApiKeyRecord)
           {
             id:              api_key.id,
-            organization_id: api_key.organization_id,
             name:            api_key.name,
             key_prefix:      api_key.key_prefix,
             last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
@@ -90,7 +91,6 @@ module KemalcrStarter
         private def serialize_created_api_key(api_key : Infrastructure::DB::ApiKeyRecord, secret : String)
           {
             id:              api_key.id,
-            organization_id: api_key.organization_id,
             name:            api_key.name,
             key_prefix:      api_key.key_prefix,
             last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
@@ -99,14 +99,6 @@ module KemalcrStarter
             created_at:      api_key.created_at.to_rfc3339,
             secret:          secret,
           }
-        end
-
-        private def generate_id(prefix : String) : String
-          "#{prefix}_#{UUID.random}"
-        end
-
-        private def can_manage_organization?(role : String) : Bool
-          role == "owner" || role == "admin"
         end
 
         private def publish_event(event : Core::Events::DomainEvent) : Nil
