@@ -272,6 +272,44 @@ module KemalcrStarter
         end
       end
 
+      get "/rbac/permissions" do |env|
+        perms = Core::Rbac::Permission.values.map do |p|
+          {name: p.to_s, roles: rbac_service.roles_for_permission(p)}
+        end
+        env.status(200).json({permissions: perms, request_id: request_context(env).request_id})
+      end
+
+      get "/rbac/roles" do |env|
+        repo = Infrastructure::DB::RbacRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+        roles = {"owner" => repo.list_permissions_for_role("owner"),
+                 "admin" => repo.list_permissions_for_role("admin"),
+                 "member" => repo.list_permissions_for_role("member")}
+        env.status(200).json({roles: roles, request_id: request_context(env).request_id})
+      end
+
+      post "/rbac/roles/:role/seed" do |env|
+        role_name = env.params.url["role"]
+        rbac_service.seed_default_roles!
+        env.status(200).json({status: "seeded", request_id: request_context(env).request_id})
+      end
+
+      delete "/rbac/roles/:role/permissions/:permission" do |env|
+        role_name = env.params.url["role"]
+        perm_name = env.params.url["permission"]
+        begin
+          permission = Core::Rbac::Permission.from_s(perm_name)
+          repo = Infrastructure::DB::RbacRepository.new(
+            Infrastructure::DB::ConnectionManager.client(settings.database_url)
+          )
+          repo.remove_permission(role_name, permission)
+          env.status(200).json({status: "removed", request_id: request_context(env).request_id})
+        rescue ex
+          env.status(422).json({status: "invalid_permission", request_id: request_context(env).request_id})
+        end
+      end
+
       Modules::Identity::AuthRoutes.draw
       Modules::Identity::MeRoutes.draw
       Modules::ApiKeys::ApiKeyRoutes.draw
