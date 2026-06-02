@@ -1,0 +1,119 @@
+require "uuid"
+
+module KemalcrStarter
+  module Modules
+    module ApiKeys
+      record AuthenticatedApiKey,
+        api_key_id : String,
+        organization_id : String
+
+      class ApiKeyService
+        def initialize(@settings : Core::Config::Settings, @database : ::DB::Database,
+                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil)
+          @api_key_repository = Infrastructure::DB::ApiKeyRepository.new(@database)
+          @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
+          @organization_repository = Infrastructure::DB::OrganizationRepository.new(@database)
+          @secret_hasher = Infrastructure::Crypto::ApiKeySecretHasher.new(@settings.password_pepper)
+        end
+
+        def list_for_actor(actor_id : String, organization_id : String)
+          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot access this organization's API keys.")
+
+          @api_key_repository.list_active_for_organization(organization_id).map do |api_key|
+            serialize_api_key(api_key)
+          end
+        end
+
+        def create_for_actor(actor_id : String, organization_id : String, name : String)
+          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot create API keys for this organization.")
+
+          normalized_name = name.strip
+          raise Core::Errors::ValidationError.new if normalized_name.empty?
+
+          secret = @secret_hasher.generate_secret
+          created = @api_key_repository.create(
+            generate_id("key"),
+            organization_id,
+            normalized_name,
+            @secret_hasher.prefix(secret),
+            @secret_hasher.hash(secret)
+          )
+
+          publish_event(ApiKeyCreated.new(created.id, organization_id, normalized_name))
+          serialize_created_api_key(created, secret)
+        end
+
+        def revoke_for_actor(actor_id : String, organization_id : String, api_key_id : String) : Nil
+          authorize_manager!(actor_id, organization_id, "The authenticated actor cannot revoke API keys for this organization.")
+
+          api_key = @api_key_repository.find_active_for_organization(api_key_id, organization_id)
+          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke API keys for this organization.") unless api_key
+
+          @api_key_repository.revoke(api_key_id, Time.utc)
+          publish_event(ApiKeyRevoked.new(api_key_id, organization_id))
+        end
+
+        def authenticate(secret : String) : AuthenticatedApiKey
+          normalized_secret = secret.strip
+          raise Core::Errors::UnauthorizedError.new if normalized_secret.empty?
+
+          api_key = @api_key_repository.find_active_by_prefix(@secret_hasher.prefix(normalized_secret))
+          raise Core::Errors::UnauthorizedError.new unless api_key
+          raise Core::Errors::UnauthorizedError.new unless @secret_hasher.verify(normalized_secret, api_key.not_nil!.secret_hash)
+
+          @api_key_repository.touch_last_used(api_key.not_nil!.id, Time.utc)
+          AuthenticatedApiKey.new(api_key_id: api_key.not_nil!.id, organization_id: api_key.not_nil!.organization_id)
+        end
+
+        private def authorize_manager!(actor_id : String, organization_id : String, message : String) : Nil
+          membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
+          raise Core::Errors::ForbiddenError.new(message) unless membership
+          raise Core::Errors::ForbiddenError.new(message) unless can_manage_organization?(membership.not_nil!.role)
+
+          organization = @organization_repository.find_active(organization_id)
+          raise Core::Errors::ForbiddenError.new(message) unless organization
+        end
+
+        private def serialize_api_key(api_key : Infrastructure::DB::ApiKeyRecord)
+          {
+            id:              api_key.id,
+            organization_id: api_key.organization_id,
+            name:            api_key.name,
+            key_prefix:      api_key.key_prefix,
+            last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
+            expires_at:      api_key.expires_at.try(&.to_rfc3339),
+            revoked_at:      api_key.revoked_at.try(&.to_rfc3339),
+            created_at:      api_key.created_at.to_rfc3339,
+          }
+        end
+
+        private def serialize_created_api_key(api_key : Infrastructure::DB::ApiKeyRecord, secret : String)
+          {
+            id:              api_key.id,
+            organization_id: api_key.organization_id,
+            name:            api_key.name,
+            key_prefix:      api_key.key_prefix,
+            last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
+            expires_at:      api_key.expires_at.try(&.to_rfc3339),
+            revoked_at:      api_key.revoked_at.try(&.to_rfc3339),
+            created_at:      api_key.created_at.to_rfc3339,
+            secret:          secret,
+          }
+        end
+
+        private def generate_id(prefix : String) : String
+          "#{prefix}_#{UUID.random}"
+        end
+
+        private def can_manage_organization?(role : String) : Bool
+          role == "owner" || role == "admin"
+        end
+
+        private def publish_event(event : Core::Events::DomainEvent) : Nil
+          repo = @event_repository
+          repo.try(&.create(event))
+        end
+      end
+    end
+  end
+end

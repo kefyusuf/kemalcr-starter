@@ -27,15 +27,19 @@ require "./infrastructure/outbox/redis_notifier"
 require "./infrastructure/outbox/outbox_publisher"
 require "./infrastructure/jwt/token_provider"
 require "./infrastructure/redis/client_manager"
+require "./modules/identity/events"
 require "./modules/identity/auth_service"
 require "./modules/identity/auth_throttle"
-require "./modules/identity/me_routes"
 require "./modules/identity/me_service"
+require "./modules/identity/me_routes"
 require "./modules/identity/auth_routes"
-require "./modules/api_keys/api_key_routes"
+require "./modules/api_keys/events"
 require "./modules/api_keys/api_key_service"
-require "./modules/organizations/organization_routes"
+require "./modules/api_keys/api_key_routes"
+require "./modules/organizations/events"
 require "./modules/organizations/organization_service"
+require "./modules/organizations/organization_routes"
+require "./infrastructure/db/processed_event_repository"
 
 module KemalcrStarter
   VERSION = "0.1.0"
@@ -60,7 +64,10 @@ module KemalcrStarter
     def self.auth_service : Modules::Identity::AuthService
       @@auth_service ||= Modules::Identity::AuthService.new(
         settings,
-        Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
       )
     end
 
@@ -99,7 +106,10 @@ module KemalcrStarter
 
     def self.organization_service : Modules::Organizations::OrganizationService
       @@organization_service ||= Modules::Organizations::OrganizationService.new(
-        Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
       )
     end
 
