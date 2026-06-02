@@ -158,6 +158,74 @@ module KemalcrStarter
             )
           end
         end
+
+        record DeadLetterRecord,
+          id : String,
+          original_event_id : String?,
+          event_type : String,
+          event_data : String,
+          aggregate_type : String,
+          aggregate_id : String,
+          correlation_id : String?,
+          causation_id : String?,
+          failure_reason : String?,
+          retry_count : Int32,
+          failed_at : Time
+
+        def list_dead_letters : Array(DeadLetterRecord)
+          many(
+            <<-SQL,
+              SELECT id, original_event_id, event_type, event_data::text, aggregate_type, aggregate_id,
+                correlation_id, causation_id, failure_reason, retry_count, failed_at
+              FROM dead_letter_events
+              ORDER BY failed_at DESC
+            SQL
+          ) do |rs|
+            DeadLetterRecord.new(
+              id: rs.read(String),
+              original_event_id: rs.read(String?),
+              event_type: rs.read(String),
+              event_data: rs.read(String),
+              aggregate_type: rs.read(String),
+              aggregate_id: rs.read(String),
+              correlation_id: rs.read(String?),
+              causation_id: rs.read(String?),
+              failure_reason: rs.read(String?),
+              retry_count: rs.read(Int32),
+              failed_at: rs.read(Time)
+            )
+          end
+        end
+
+        def requeue_dead_letter(dead_letter_id : String) : Bool
+          result = false
+          database.transaction do |txn|
+            conn = txn.connection
+            dl = conn.query_one?("SELECT id, original_event_id, event_type, event_data::text, aggregate_type, aggregate_id, correlation_id, causation_id FROM dead_letter_events WHERE id = $1", dead_letter_id) do |rs|
+              DeadLetterRecord.new(
+                id: rs.read(String),
+                original_event_id: rs.read(String?),
+                event_type: rs.read(String),
+                event_data: rs.read(String),
+                aggregate_type: rs.read(String),
+                aggregate_id: rs.read(String),
+                correlation_id: rs.read(String?),
+                causation_id: rs.read(String?),
+                failure_reason: nil,
+                retry_count: 0,
+                failed_at: Time.utc
+              )
+            end
+
+            if dl
+              conn.exec "INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, event_data, correlation_id, causation_id) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)",
+                dl.id, dl.aggregate_type, dl.aggregate_id, dl.event_type, dl.event_data, dl.correlation_id, dl.causation_id
+              conn.exec "DELETE FROM dead_letter_events WHERE id = $1", dead_letter_id
+              result = true
+            end
+          end
+          result
+        end
       end
     end
   end

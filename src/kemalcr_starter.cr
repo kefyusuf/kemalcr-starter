@@ -113,7 +113,7 @@ module KemalcrStarter
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
         ),
         handler_registry,
-        poll_interval: Time::Span.new(milliseconds: settings.event_poll_interval_ms),
+        poll_interval: Time::Span.new(nanoseconds: settings.event_poll_interval_ms * 1_000_000),
         batch_size: settings.event_batch_size,
         max_retries: settings.event_max_retries,
         redis_url: settings.redis_url
@@ -168,14 +168,16 @@ module KemalcrStarter
       get "/ready" do |env|
         postgres_status = Infrastructure::DB::ConnectionManager.ready?(settings.database_url) ? "up" : "down"
         redis_status = Infrastructure::Redis::ClientManager.ready?(settings.redis_url) ? "up" : "down"
-        ready = postgres_status == "up" && redis_status == "up"
+        event_system = publisher_health
+        ready = postgres_status == "up" && redis_status == "up" && event_system == "up"
 
         env.status(200).json(
           {
             status: ready ? "ready" : "degraded",
             checks: {
-              postgres: postgres_status,
-              redis:    redis_status,
+              postgres:     postgres_status,
+              redis:        redis_status,
+              event_system: event_system,
             },
             request_id: request_context(env).request_id,
           }
@@ -200,17 +202,73 @@ module KemalcrStarter
         File.read(settings.openapi_path)
       end
 
+      get "/events/metrics" do |env|
+        stats = outbox_publisher.stats
+        env.status(200).json(
+          {
+            dispatched:  stats.dispatched,
+            failed:      stats.failed,
+            dead_letter: stats.dead_letter,
+            last_poll:   stats.last_poll_at.try(&.to_rfc3339),
+            service:     settings.service_name,
+            request_id:  request_context(env).request_id,
+          }
+        )
+      end
+
+      get "/events/dead-letter" do |env|
+        repo = Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+        items = repo.list_dead_letters.map do |dl|
+          {
+            id:             dl.id,
+            original_event_id: dl.original_event_id,
+            event_type:     dl.event_type,
+            aggregate_type: dl.aggregate_type,
+            aggregate_id:   dl.aggregate_id,
+            failure_reason: dl.failure_reason,
+            retry_count:    dl.retry_count,
+            failed_at:      dl.failed_at.to_rfc3339,
+          }
+        end
+        env.status(200).json({dead_letters: items, count: items.size, request_id: request_context(env).request_id})
+      end
+
+      post "/events/dead-letter/:id/requeue" do |env|
+        repo = Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+        id = env.params.url["id"]
+        if repo.requeue_dead_letter(id)
+          env.status(200).json({status: "requeued", request_id: request_context(env).request_id})
+        else
+          env.status(404).json({status: "not_found", request_id: request_context(env).request_id})
+        end
+      end
+
       Modules::Identity::AuthRoutes.draw
       Modules::Identity::MeRoutes.draw
       Modules::ApiKeys::ApiKeyRoutes.draw
       Modules::Organizations::OrganizationRoutes.draw
     end
 
+    def self.publisher_health : String
+      return "disabled" unless @@outbox_publisher
+      return "down" unless outbox_publisher.running?
+
+      last_poll = outbox_publisher.stats.last_poll_at
+      return "starting" unless last_poll
+
+      poll_interval_ms = settings.event_poll_interval_ms
+      threshold = Time.utc - Time::Span.new(nanoseconds: poll_interval_ms * 2 * 1_000_000)
+      last_poll > threshold ? "up" : "degraded"
+    end
+
     def self.boot : Nil
       configure
       draw_routes
       outbox_publisher.start
-      Kemal.config.shutdown { outbox_publisher.stop }
     end
   end
 end
