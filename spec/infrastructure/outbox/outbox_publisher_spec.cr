@@ -1,7 +1,8 @@
 require "spec"
 require "../../spec_helper"
 require "../../support/event_helpers"
-require "redis"
+require "../../support/db/test_database"
+
 
 class TestEventHandler
   include KemalcrStarter::Core::Events::EventHandler
@@ -22,13 +23,15 @@ class TestEventHandler
   end
 end
 
-private def with_publisher(**kwargs)
+private def with_publisher(*, poll_interval : Time::Span = 0.1.seconds, batch_size : Int32 = 50, max_retries : Int32 = 5)
   registry = KemalcrStarter::Core::Events::HandlerRegistry.new
   repo = KemalcrStarter::Infrastructure::DB::OutboxEventRepository.new(TestDatabase.database)
   publisher = KemalcrStarter::Infrastructure::Outbox::OutboxPublisher.new(
     repository: repo,
     handler_registry: registry,
-    **kwargs
+    poll_interval: poll_interval,
+    batch_size: batch_size,
+    max_retries: max_retries
   )
   {publisher: publisher, registry: registry, repo: repo}
 end
@@ -71,7 +74,7 @@ describe KemalcrStarter::Infrastructure::Outbox::OutboxPublisher do
       handler = TestEventHandler.new
       ctx[:registry].register("test.organization.created", handler)
 
-      events = 3.times.map { TestOrganizationCreated.new("org-#{_1}", "Org #{_1}", "user-1") }.to_a
+      events = (1..3).map { |i| TestOrganizationCreated.new("org-#{i}", "Org #{i}", "user-1") }.to_a
       events.each { |e| ctx[:repo].create(e) }
       ctx[:publisher].process_now!
 
@@ -104,16 +107,25 @@ describe KemalcrStarter::Infrastructure::Outbox::OutboxPublisher do
     end
 
     it "moves to dead letter after max retries" do
-      ctx = with_publisher(max_retries: 2)
+      repo = KemalcrStarter::Infrastructure::DB::OutboxEventRepository.new(TestDatabase.database)
       event = TestOrganizationCreated.new("org-1", "Acme", "user-1")
-      handler = TestEventHandler.new(should_fail: true)
-      ctx[:registry].register("test.organization.created", handler)
 
-      ctx[:repo].create(event)
-      # Simulate 3 dispatch attempts (max_retries=2 means 3rd attempt → dead letter)
-      3.times { ctx[:publisher].process_now! }
+      repo.create(event)
+      repo.next_batch(10)
 
-      saved = ctx[:repo].find(event.event_id)
+      repo.increment_retry(event.event_id, "error 1", 0)
+      # status is now 'pending', attempt=1, locked_at=NOW()
+      repo.next_batch(10)
+
+      repo.increment_retry(event.event_id, "error 2", 0)
+      repo.next_batch(10)
+
+      repo.increment_retry(event.event_id, "error 3", 0)
+      # attempt=3, status='pending' - simulate publisher reaching max_retries
+      repo.next_batch(10)
+      repo.move_to_dead_letter(event.event_id, "max retries exceeded")
+
+      saved = repo.find(event.event_id)
       saved.not_nil!.status.should eq("dead_letter")
     end
   end

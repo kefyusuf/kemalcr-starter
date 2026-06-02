@@ -10,7 +10,7 @@ module KemalcrStarter
         def notify_new_event(event_id : String) : Nil
           spawn do
             begin
-              redis = Redis::Client.new(URI.parse(@redis_url))
+              redis = ::Redis::Client.new(URI.parse(@redis_url))
               redis.publish(CHANNEL, event_id)
               redis.close
             rescue ex

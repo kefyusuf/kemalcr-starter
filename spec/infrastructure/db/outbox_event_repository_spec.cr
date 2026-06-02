@@ -1,6 +1,7 @@
 require "spec"
 require "../../spec_helper"
 require "../../support/event_helpers"
+require "../../support/db/test_database"
 
 private def repo
   KemalcrStarter::Infrastructure::DB::OutboxEventRepository.new(TestDatabase.database)
@@ -63,7 +64,7 @@ describe KemalcrStarter::Infrastructure::DB::OutboxEventRepository do
   describe "#create with connection" do
     it "inserts event within a transaction" do
       event = create_test_event
-      repo.transaction do |txn|
+      TestDatabase.database.transaction do |txn|
         conn = txn.connection
         repo.create(event, connection: conn)
       end
@@ -74,7 +75,7 @@ describe KemalcrStarter::Infrastructure::DB::OutboxEventRepository do
     it "rolls back event when transaction fails" do
       event = create_test_event
       expect_raises(Exception) do
-        repo.transaction do |txn|
+        TestDatabase.database.transaction do |txn|
           conn = txn.connection
           repo.create(event, connection: conn)
           raise "force rollback"
@@ -90,7 +91,7 @@ describe KemalcrStarter::Infrastructure::DB::OutboxEventRepository do
       event1 = create_test_event
       event2 = create_test_event
       repo.create(event1)
-      sleep 0.01
+      sleep 0.01.seconds
       repo.create(event2)
       batch = repo.next_batch(10)
       batch.size.should eq(2)
@@ -216,13 +217,27 @@ describe KemalcrStarter::Infrastructure::DB::OutboxEventRepository do
   describe "transactional atomicity" do
     it "creates event and business data in same transaction" do
       event = create_test_event
-      repo.transaction do |txn|
+      TestDatabase.database.transaction do |txn|
         conn = txn.connection
         outbox_repo = KemalcrStarter::Infrastructure::DB::OutboxEventRepository.new(conn)
         outbox_repo.create(event, connection: conn)
       end
       saved = repo.find(event.event_id)
       saved.should_not be_nil
+    end
+
+    it "rolls back event when transaction fails" do
+      event = create_test_event
+      expect_raises(Exception) do
+        TestDatabase.database.transaction do |txn|
+          conn = txn.connection
+          outbox_repo = KemalcrStarter::Infrastructure::DB::OutboxEventRepository.new(conn)
+          outbox_repo.create(event, connection: conn)
+          raise "force rollback"
+        end
+      end
+      saved = repo.find(event.event_id)
+      saved.should be_nil
     end
   end
 end

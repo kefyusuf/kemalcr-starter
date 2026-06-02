@@ -107,8 +107,8 @@ module KemalcrStarter
         private def start_redis_subscriber : Nil
           @subscriber_fiber = spawn do
             begin
-              redis = Redis::Client.new(URI.parse(@redis_url.not_nil!))
-              redis.subscribe("events:new") do |subscription|
+              redis = ::Redis::Client.new(URI.parse(@redis_url.not_nil!))
+              redis.subscribe("events:new") do |subscription, _conn|
                 subscription.on_message do |channel, message|
                   @stats.record_poll
                   process_batch
