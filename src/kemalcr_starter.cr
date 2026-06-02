@@ -9,12 +9,14 @@ require "./core/logging/request_log_context"
 require "./core/security/security_headers_handler"
 require "./core/tenancy/authentication_handler"
 require "./core/events/events"
+require "./core/rbac/rbac"
 require "./infrastructure/crypto/password_hasher"
 require "./infrastructure/crypto/api_key_secret_hasher"
 require "./infrastructure/crypto/token_fingerprint"
 require "./infrastructure/db/connection_manager"
 require "./infrastructure/db/migrator"
 require "./infrastructure/db/repository"
+require "./infrastructure/db/rbac_repository"
 require "./infrastructure/db/api_key_repository"
 require "./infrastructure/db/idempotency_key_repository"
 require "./infrastructure/db/organization_membership_repository"
@@ -56,6 +58,7 @@ module KemalcrStarter
     @@organization_service : Modules::Organizations::OrganizationService?
     @@handler_registry : Core::Events::HandlerRegistry?
     @@outbox_publisher : Infrastructure::Outbox::OutboxPublisher?
+    @@rbac_service : Core::Rbac::AuthorizationService?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -117,6 +120,14 @@ module KemalcrStarter
       @@handler_registry ||= Core::Events::HandlerRegistry.new
     end
 
+    def self.rbac_service : Core::Rbac::AuthorizationService
+      @@rbac_service ||= Core::Rbac::AuthorizationService.new(
+        Infrastructure::DB::RbacRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+      )
+    end
+
     def self.outbox_publisher : Infrastructure::Outbox::OutboxPublisher
       @@outbox_publisher ||= Infrastructure::Outbox::OutboxPublisher.new(
         Infrastructure::DB::OutboxEventRepository.new(
@@ -145,6 +156,7 @@ module KemalcrStarter
       @@organization_service = nil
       @@handler_registry = nil
       @@outbox_publisher = nil
+      @@rbac_service = nil
     end
 
     def self.configure : Nil
