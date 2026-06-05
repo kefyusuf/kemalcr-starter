@@ -247,14 +247,14 @@ module KemalcrStarter
         )
         items = repo.list_dead_letters.map do |dl|
           {
-            id:             dl.id,
+            id:                dl.id,
             original_event_id: dl.original_event_id,
-            event_type:     dl.event_type,
-            aggregate_type: dl.aggregate_type,
-            aggregate_id:   dl.aggregate_id,
-            failure_reason: dl.failure_reason,
-            retry_count:    dl.retry_count,
-            failed_at:      dl.failed_at.to_rfc3339,
+            event_type:        dl.event_type,
+            aggregate_type:    dl.aggregate_type,
+            aggregate_id:      dl.aggregate_id,
+            failure_reason:    dl.failure_reason,
+            retry_count:       dl.retry_count,
+            failed_at:         dl.failed_at.to_rfc3339,
           }
         end
         env.status(200).json({dead_letters: items, count: items.size, request_id: request_context(env).request_id})
@@ -273,6 +273,9 @@ module KemalcrStarter
       end
 
       get "/rbac/permissions" do |env|
+        actor_id = request_context(env).actor_id
+        raise Core::Errors::UnauthorizedError.new unless actor_id
+
         perms = Core::Rbac::Permission.values.map do |p|
           {name: p.to_s, roles: rbac_service.roles_for_permission(p)}
         end
@@ -280,34 +283,44 @@ module KemalcrStarter
       end
 
       get "/rbac/roles" do |env|
+        actor_id = request_context(env).actor_id
+        raise Core::Errors::UnauthorizedError.new unless actor_id
+
         repo = Infrastructure::DB::RbacRepository.new(
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
         )
-        roles = {"owner" => repo.list_permissions_for_role("owner"),
-                 "admin" => repo.list_permissions_for_role("admin"),
+        roles = {"owner"  => repo.list_permissions_for_role("owner"),
+                 "admin"  => repo.list_permissions_for_role("admin"),
                  "member" => repo.list_permissions_for_role("member")}
         env.status(200).json({roles: roles, request_id: request_context(env).request_id})
       end
 
-      post "/rbac/roles/:role/seed" do |env|
-        role_name = env.params.url["role"]
+      post "/rbac/roles/seed" do |env|
+        actor_id = request_context(env).actor_id
+        raise Core::Errors::UnauthorizedError.new unless actor_id
+
         rbac_service.seed_default_roles!
         env.status(200).json({status: "seeded", request_id: request_context(env).request_id})
       end
 
       delete "/rbac/roles/:role/permissions/:permission" do |env|
+        actor_id = request_context(env).actor_id
+        raise Core::Errors::UnauthorizedError.new unless actor_id
+
         role_name = env.params.url["role"]
         perm_name = env.params.url["permission"]
         begin
           permission = Core::Rbac::Permission.from_s(perm_name)
-          repo = Infrastructure::DB::RbacRepository.new(
-            Infrastructure::DB::ConnectionManager.client(settings.database_url)
-          )
-          repo.remove_permission(role_name, permission)
-          env.status(200).json({status: "removed", request_id: request_context(env).request_id})
-        rescue ex
+        rescue ArgumentError
           env.status(422).json({status: "invalid_permission", request_id: request_context(env).request_id})
+          next
         end
+
+        repo = Infrastructure::DB::RbacRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+        repo.remove_permission(role_name, permission)
+        env.status(200).json({status: "removed", request_id: request_context(env).request_id})
       end
 
       Modules::Identity::AuthRoutes.draw
