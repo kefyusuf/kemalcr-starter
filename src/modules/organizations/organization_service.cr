@@ -68,7 +68,7 @@ module KemalcrStarter
         def update_for_actor(actor_id : String, organization_id : String, slug : String?, name : String?)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot update this organization.") unless membership
-          @rbac_service.try(&.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationUpdate, role: membership.not_nil!.role))
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationUpdate, role: membership.not_nil!.role)
 
           normalized_slug = slug.nil? ? nil : normalize_slug(slug)
           normalized_name = name.nil? ? nil : name.strip
@@ -87,6 +87,7 @@ module KemalcrStarter
         def list_memberships_for_actor(actor_id : String, organization_id : String)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.") unless membership
+          @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationListMemberships, role: membership.not_nil!.role)
 
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.") unless organization
