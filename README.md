@@ -1,126 +1,116 @@
-# Kemal API Foundation
+# Kemalcr Starter
 
-Docker-first API foundation built with Kemal, Crystal, PostgreSQL, and Redis.
+Docker-first API platform built with Crystal, Kemal, PostgreSQL, and Redis.
 
-This repository is structured as an API-first starter that can be reused under an ecommerce product, a CMS, or a SaaS application. The current implementation already covers tenant-aware identity, organization management, selected idempotent write flows, and API key management.
+Multi-tenant API foundation with tenant-aware identity, organization management, API key authentication, idempotent writes, event-driven architecture, RBAC authorization, and rate limiting.
 
 ## Implemented Capabilities
 
-- system endpoints: `/health`, `/ready`, `/version`, `/openapi`
-- JWT login, refresh rotation, logout, and logout-all
-- Redis-backed fixed-window throttling for login and refresh
-- `GET /v1/me` and active organization switching
-- organization create, list, detail, and update
-- membership listing and invitation create, list, accept, and revoke
-- selected idempotency support for organization create, invitation create, auth refresh, and API key create
-- API key create, list, revoke, and first machine-authenticated read access
-- OpenAPI contract stored in `openapi/openapi.yaml`
+### System & Observability
+- `GET /health`, `GET /ready`, `GET /version`, `GET /openapi`
+- Structured access logging (method, path, status, duration, actor_id, org_id)
+- Outbox event system with background publisher, retry with backoff, dead letter queue
+- Audit log handlers for all domain events (organization, membership, API key, user)
+- Event metrics and dead letter management endpoints
+
+### Authentication
+- `POST /v1/auth/register` with password policy validation (min 8 chars, upper/lower/digit)
+- `POST /v1/auth/login` with JWT access + refresh token pair
+- `POST /v1/auth/refresh` with rotation and reuse detection (family revocation)
+- `POST /v1/auth/logout`, `POST /v1/auth/logout-all`
+- Redis-backed fixed-window throttling (login, refresh, register)
+- Machine authentication via `X-API-Key` header
+
+### Authorization (RBAC)
+- Three built-in roles: owner, admin, member
+- Permission enum: OrganizationUpdate, OrganizationInvite, OrganizationRevoke, OrganizationDelete, OrganizationListMemberships, OrganizationListInvitations, ApiKeyCreate, ApiKeyRevoke
+- Owner gets all 8 permissions, admin gets 7 (no delete), member gets 1 (list memberships)
+- Endpoints to seed, list permissions, and manage role-permission assignments
+
+### Current Actor
+- `GET /v1/me` — authenticated actor profile with organization context
+- `POST /v1/me/active-organization` — switch active organization, reissue tokens
+
+### Organizations
+- Create, list (paginated), detail, update
+- Membership listing (paginated)
+- Invitation create, list (paginated), accept, revoke
+- RBAC-guarded write operations
+
+### API Keys
+- Create, list (paginated), revoke
+- Organization-scoped machine-to-machine authentication
+- Secret revealed only at creation
+
+### Idempotency
+- Selected POST endpoints: organization create, invitation create, auth refresh, API key create
+- Redis lock + PostgreSQL persistence with fingerprint-based replay detection
+
+### Cross-Cutting
+- CORS middleware with configurable origins (`CORS_ORIGINS`)
+- Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
+- Structured error responses with typed error classes (401/403/409/422/429)
+- Request correlation via `X-Request-Id`
 
 ## Stack
 
-- Crystal
-- Kemal
-- PostgreSQL
-- Redis
-- Docker Compose
-
-## Prerequisites
-
-- Docker
-- Docker Compose
+- Crystal 1.17.1+
+- Kemal 1.11.0
+- PostgreSQL 16, Redis 7
+- Docker Compose V2
 
 ## Quick Start
-
-Start the development stack:
 
 ```sh
 ./scripts/dev
 ```
 
-Wait for the app to boot on `http://localhost:3000`, then verify the base endpoints:
+Verify:
 
 ```sh
 curl http://localhost:3000/health
 curl http://localhost:3000/ready
 curl http://localhost:3000/version
-curl http://localhost:3000/openapi
 ```
 
-## Validation Commands
-
-Run the format check:
+## Testing
 
 ```sh
-./scripts/lint
-```
-
-Run the test suite inside Docker:
-
-```sh
-./scripts/test
-```
-
-Run migrations manually:
-
-```sh
-./scripts/migrate up
-./scripts/migrate status
-./scripts/migrate reset
+./scripts/test          # Run all specs (158 examples, 0 failures)
+./scripts/lint          # Crystal format check
 ```
 
 ## Authentication Modes
 
-### Human authentication
+### Human (Bearer JWT)
+```
+POST /v1/auth/register   {"name", "email", "password"}  → 201 + token pair
+POST /v1/auth/login      {"email", "password"}          → 200 + token pair
+```
 
-- Bearer JWT access tokens protect the actor-centric endpoints.
-- Refresh tokens rotate persisted sessions.
-- Tenant context is carried through the active organization claim.
-
-### Machine authentication
-
-- `X-API-Key` is supported for organization-scoped machine access.
-- The current machine-authenticated read surface includes:
-- `GET /v1/organizations/:organization_id`
-- `GET /v1/organizations/:organization_id/memberships`
+### Machine (X-API-Key)
+```
+POST /v1/organizations/:id/api-keys  → 201 + secret (one-time)
+GET  /v1/organizations/:id           → via X-API-Key header
+GET  /v1/organizations/:id/memberships → via X-API-Key header
+```
 
 ## Project Layout
 
-- `src/` application source
-- `spec/` request, repository, and integration tests
-- `openapi/` API contract source of truth
-- `db/migrations/` PostgreSQL schema migrations
-- `docker/` Docker image definitions
-- `docs/` architecture notes, guides, roadmap, and specs
-- `scripts/` Docker-first developer commands
+- `src/` — application source (core/, infrastructure/, modules/)
+- `spec/` — request, integration, repository, and unit tests (26 spec files)
+- `openapi/` — OpenAPI 3.1.0 contract (openapi.yaml)
+- `db/migrations/` — 11 PostgreSQL migrations
+- `docker/` — multi-stage Dockerfile (base → dev → build → runtime)
+- `docs/` — architecture, guides, roadmap
+- `scripts/` — dev, test, lint, migrate
 
 ## CI
 
-GitHub Actions validation is defined in `.github/workflows/ci.yml`.
-
-The workflow currently checks:
-
-- Docker Compose configuration
-- application image build
-- Crystal format validation
-- request and integration test suite
+GitHub Actions (`.github/workflows/ci.yml`):
+- Docker Compose config validation
+- Application image build
+- Crystal format check
+- Full test suite (request + integration + unit)
 - OpenAPI YAML parsing
-- release image build
-- release container smoke test against PostgreSQL and Redis
-
-## Documentation Map
-
-- `docs/architecture/overview.md`
-- `docs/architecture/authentication.md`
-- `docs/architecture/error-model.md`
-- `docs/architecture/tenancy-model.md`
-- `docs/architecture/organizations.md`
-- `docs/architecture/idempotency.md`
-- `docs/guides/deployment.md`
-- `docs/guides/local-development.md`
-- `docs/guides/project-structure.md`
-- `docs/roadmap/phase-8-readiness-audit.md`
-- `docs/roadmap/implementation-plan.md`
-
-## Current Status
-
-The Phase 8 reusable-starter baseline is now in place, covering CI, release metadata, auth throttling, onboarding, deployment guidance, and a readiness audit. The roadmap source remains `docs/roadmap/implementation-plan.md`.
+- Release image build and smoke test
