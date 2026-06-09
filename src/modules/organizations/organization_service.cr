@@ -12,10 +12,14 @@ module KemalcrStarter
           @user_repository = Infrastructure::DB::UserRepository.new(@database)
         end
 
-        def list_for_actor(actor_id : String)
-          @organization_repository.list_active_for_user(actor_id).map do |organization|
+        def list_for_actor(actor_id : String, limit : Int32 = 1000, offset : Int32 = 0)
+          @organization_repository.list_active_for_user(actor_id, limit: limit, offset: offset).map do |organization|
             serialize_organization(organization)
           end
+        end
+
+        def count_for_actor(actor_id : String) : Int64
+          @organization_repository.count_active_for_user(actor_id)
         end
 
         def get_for_actor(actor_id : String, organization_id : String)
@@ -84,7 +88,7 @@ module KemalcrStarter
           raise Core::Errors::ConflictError.new("Organization slug already exists.")
         end
 
-        def list_memberships_for_actor(actor_id : String, organization_id : String)
+        def list_memberships_for_actor(actor_id : String, organization_id : String, limit : Int32 = 1000, offset : Int32 = 0)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.") unless membership
           @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationListMemberships, role: membership.not_nil!.role)
@@ -92,19 +96,23 @@ module KemalcrStarter
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.") unless organization
 
-          @membership_repository.list_active_for_organization(organization_id).map do |member|
+          @membership_repository.list_active_for_organization(organization_id, limit: limit, offset: offset).map do |member|
             serialize_membership(member)
           end
         end
 
-        def list_memberships_for_request(actor_id : String?, authenticated_organization_id : String?, organization_id : String)
-          return list_memberships_for_actor(actor_id.not_nil!, organization_id) if actor_id
+        def count_memberships(organization_id : String) : Int64
+          @membership_repository.count_active_for_organization(organization_id)
+        end
+
+        def list_memberships_for_request(actor_id : String?, authenticated_organization_id : String?, organization_id : String, limit : Int32 = 1000, offset : Int32 = 0)
+          return list_memberships_for_actor(actor_id.not_nil!, organization_id, limit: limit, offset: offset) if actor_id
 
           if authenticated_organization_id == organization_id
             organization = @organization_repository.find_active(organization_id)
             raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.") unless organization
 
-            return @membership_repository.list_active_for_organization(organization_id).map do |member|
+            return @membership_repository.list_active_for_organization(organization_id, limit: limit, offset: offset).map do |member|
               serialize_membership(member)
             end
           end
@@ -112,7 +120,7 @@ module KemalcrStarter
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization.")
         end
 
-        def list_invitations_for_actor(actor_id : String, organization_id : String)
+        def list_invitations_for_actor(actor_id : String, organization_id : String, limit : Int32 = 1000, offset : Int32 = 0)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's invitations.") unless membership
           @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::OrganizationListInvitations, role: membership.not_nil!.role)
@@ -120,9 +128,13 @@ module KemalcrStarter
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's invitations.") unless organization
 
-          @membership_repository.list_pending_for_organization(organization_id).map do |invitation|
+          @membership_repository.list_pending_for_organization(organization_id, limit: limit, offset: offset).map do |invitation|
             serialize_invitation(invitation)
           end
+        end
+
+        def count_invitations(organization_id : String) : Int64
+          @membership_repository.count_pending_for_organization(organization_id)
         end
 
         def invite_user_for_actor(actor_id : String, organization_id : String, email : String, role : String)

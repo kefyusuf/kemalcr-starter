@@ -23,6 +23,42 @@ module KemalcrStarter
           @password_hasher
         end
 
+        def register(name : String, email : String, password : String, user_agent : String?, ip_address : String?) : Infrastructure::Jwt::TokenPairResponse
+          validate_password!(password)
+
+          user_id = generate_id("usr")
+          normalized_email = email.strip.downcase
+          password_digest = @password_hasher.hash(password)
+
+          begin
+            user = @user_repository.create(id: user_id, email: normalized_email, name: name, password_digest: password_digest)
+          rescue ex : ::DB::Error
+            if ex.message.try(&.downcase).to_s.includes?("unique")
+              raise Core::Errors::ConflictError.new("A user with this email already exists.")
+            end
+            raise ex
+          end
+
+          now = Time.utc
+          session_id = generate_id("ses")
+          session_family_id = generate_id("fam")
+          issued_tokens = @token_provider.issue_token_pair(user.id, session_id, session_family_id, nil, now: now)
+          refresh_token_hash = @token_fingerprint.digest(issued_tokens.refresh_token)
+
+          @session_repository.create(
+            id: session_id,
+            user_id: user.id,
+            session_family_id: session_family_id,
+            refresh_token_hash: refresh_token_hash,
+            expires_at: issued_tokens.refresh_expires_at,
+            user_agent: user_agent,
+            ip_address: ip_address
+          )
+
+          publish_event(UserCreated.new(user.id, normalized_email))
+          issued_tokens.to_response
+        end
+
         def login(email : String, password : String, user_agent : String?, ip_address : String?) : Infrastructure::Jwt::TokenPairResponse
           normalized_email = email.strip.downcase
           user = @user_repository.find_credentials_by_email(normalized_email)
@@ -184,6 +220,13 @@ module KemalcrStarter
 
         private def default_active_organization_id(user_id : String) : String?
           @membership_repository.find_primary_active_for_user(user_id).try(&.organization_id)
+        end
+
+        private def validate_password!(password : String) : Nil
+          raise Core::Errors::ValidationError.new("Password must be at least 8 characters.") if password.size < 8
+          raise Core::Errors::ValidationError.new("Password must include at least one uppercase letter.") unless password =~ /[A-Z]/
+          raise Core::Errors::ValidationError.new("Password must include at least one lowercase letter.") unless password =~ /[a-z]/
+          raise Core::Errors::ValidationError.new("Password must include at least one digit.") unless password =~ /\d/
         end
 
         private def raise_invalid_credentials : NoReturn

@@ -1,0 +1,11 @@
+Lint/UselessAssign:
+  Excluded:
+    - examples/*
+
+Lint/DebugCalls:
+  Excluded:
+    - examples/*
+
+Metrics/CyclomaticComplexity:
+  Excluded:
+    - src/jwt/jwks.cr

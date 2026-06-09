@@ -1,0 +1,11 @@
+Naming/TypeNames:
+  Enabled: false
+
+Naming/ConstantNames:
+  Enabled: false
+
+Naming/BlockParameterName:
+  Enabled: false
+
+Lint/Typos:
+  Enabled: false

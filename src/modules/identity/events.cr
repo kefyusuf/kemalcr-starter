@@ -8,7 +8,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, @email : String, correlation_id : String? = nil)
           super(event_type: "identity.user.created", aggregate_type: "user",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any
@@ -22,7 +22,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, correlation_id : String? = nil)
           super(event_type: "identity.user.logged_in", aggregate_type: "user",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any
@@ -36,7 +36,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, correlation_id : String? = nil)
           super(event_type: "identity.user.logged_out", aggregate_type: "user",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any
@@ -51,7 +51,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, @session_id : String, correlation_id : String? = nil)
           super(event_type: "identity.session.revoked", aggregate_type: "session",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any

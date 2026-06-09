@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Run weekly on Sunday at midnight to catch Crystal updates
+    - cron: "0 0 * * 0"
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        crystal:
+          - 1.16.3
+          - 1.17.1
+          - 1.18.2
+          - 1.19.2
+          - latest
+          - nightly
+    runs-on: ${{ matrix.os }}
+
+    steps:    
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: ${{ matrix.crystal }}
+      
+      - name: Download source
+        uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: shards install
+
+      - name: Run tests
+        run: crystal spec --order=random
+        env:
+          KEMAL_ENV: test

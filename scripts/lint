@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+
+docker compose run --rm app sh -lc "shards install && crystal tool format --check src spec"

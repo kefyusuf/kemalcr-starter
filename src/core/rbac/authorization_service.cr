@@ -28,8 +28,8 @@ module KemalcrStarter
         def authorize!(actor_id : String, organization_id : String, permission : Permission,
                        role : String? = nil) : Nil
           raise Core::Errors::ForbiddenError.new("Access denied.") unless authorized?(
-            actor_id, organization_id, permission, role
-          )
+                                                                            actor_id, organization_id, permission, role
+                                                                          )
         end
 
         def authorized?(actor_id : String, organization_id : String, permission : Permission,

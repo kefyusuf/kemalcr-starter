@@ -4,11 +4,18 @@ require "./core/errors/api_error"
 require "./core/errors/error_handler"
 require "./core/http/request_context"
 require "./core/http/request_context_handler"
+require "./core/http/pagination"
 require "./core/idempotency/service"
 require "./core/logging/request_log_context"
+require "./core/logging/access_log_handler"
 require "./core/security/security_headers_handler"
+require "./core/security/cors_handler"
 require "./core/tenancy/authentication_handler"
 require "./core/events/events"
+require "./core/events/handlers/organization_audit_handler"
+require "./core/events/handlers/membership_audit_handler"
+require "./core/events/handlers/api_key_audit_handler"
+require "./core/events/handlers/user_audit_handler"
 require "./core/rbac/rbac"
 require "./infrastructure/crypto/password_hasher"
 require "./infrastructure/crypto/api_key_secret_hasher"
@@ -24,6 +31,7 @@ require "./infrastructure/db/organization_repository"
 require "./infrastructure/db/user_repository"
 require "./infrastructure/db/user_session_repository"
 require "./infrastructure/db/outbox_event_repository"
+require "./infrastructure/db/audit_log_repository"
 require "./infrastructure/outbox/publisher_stats"
 require "./infrastructure/outbox/redis_notifier"
 require "./infrastructure/outbox/outbox_publisher"
@@ -59,6 +67,7 @@ module KemalcrStarter
     @@handler_registry : Core::Events::HandlerRegistry?
     @@outbox_publisher : Infrastructure::Outbox::OutboxPublisher?
     @@rbac_service : Core::Rbac::AuthorizationService?
+    @@audit_log_repository : Infrastructure::DB::AuditLogRepository?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -79,6 +88,7 @@ module KemalcrStarter
         redis_url: settings.redis_url,
         login_limit: settings.auth_login_throttle_limit,
         refresh_limit: settings.auth_refresh_throttle_limit,
+        register_limit: settings.auth_register_throttle_limit,
         window_seconds: settings.auth_throttle_window_seconds
       )
     end
@@ -131,6 +141,12 @@ module KemalcrStarter
       )
     end
 
+    def self.audit_log_repository : Infrastructure::DB::AuditLogRepository
+      @@audit_log_repository ||= Infrastructure::DB::AuditLogRepository.new(
+        Infrastructure::DB::ConnectionManager.client(settings.database_url)
+      )
+    end
+
     def self.outbox_publisher : Infrastructure::Outbox::OutboxPublisher
       @@outbox_publisher ||= Infrastructure::Outbox::OutboxPublisher.new(
         Infrastructure::DB::OutboxEventRepository.new(
@@ -150,6 +166,21 @@ module KemalcrStarter
       end
     end
 
+    def self.register_event_handlers : Nil
+      repo = audit_log_repository
+      handler_registry.register("organization.created", Core::Events::OrganizationAuditHandler.new(repo))
+      handler_registry.register("organization.updated", Core::Events::OrganizationAuditHandler.new(repo))
+      handler_registry.register("organization.membership.invited", Core::Events::MembershipAuditHandler.new(repo))
+      handler_registry.register("organization.membership.accepted", Core::Events::MembershipAuditHandler.new(repo))
+      handler_registry.register("organization.membership.revoked", Core::Events::MembershipAuditHandler.new(repo))
+      handler_registry.register("api_key.created", Core::Events::ApiKeyAuditHandler.new(repo))
+      handler_registry.register("api_key.revoked", Core::Events::ApiKeyAuditHandler.new(repo))
+      handler_registry.register("identity.user.created", Core::Events::UserAuditHandler.new(repo))
+      handler_registry.register("identity.user.logged_in", Core::Events::UserAuditHandler.new(repo))
+      handler_registry.register("identity.user.logged_out", Core::Events::UserAuditHandler.new(repo))
+      handler_registry.register("identity.session.revoked", Core::Events::UserAuditHandler.new(repo))
+    end
+
     def self.reset_services : Nil
       @@auth_service = nil
       @@auth_throttle = nil
@@ -160,6 +191,7 @@ module KemalcrStarter
       @@handler_registry = nil
       @@outbox_publisher = nil
       @@rbac_service = nil
+      @@audit_log_repository = nil
     end
 
     def self.configure : Nil
@@ -168,7 +200,9 @@ module KemalcrStarter
       Kemal.config.port = settings.port
       Kemal.config.powered_by_header = false
       Kemal.config.always_rescue = settings.always_rescue
+      Kemal.config.add_handler(Core::Security::CorsHandler.new)
       Kemal.config.add_handler(Core::Http::RequestContextHandler.new(settings))
+      Kemal.config.add_handler(Core::Logging::AccessLogHandler.new)
       Kemal.config.add_handler(Core::Errors::ErrorHandler.new)
       Kemal.config.add_handler(Core::Tenancy::AuthenticationHandler.new(auth_service, api_key_service))
       Kemal.config.add_handler(Core::Security::SecurityHeadersHandler.new)
@@ -343,6 +377,7 @@ module KemalcrStarter
 
     def self.boot : Nil
       configure
+      register_event_handlers
       draw_routes
       outbox_publisher.start
     end

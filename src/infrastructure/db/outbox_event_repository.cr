@@ -1,5 +1,3 @@
-
-
 module KemalcrStarter
   module Infrastructure
     module DB
@@ -174,7 +172,7 @@ module KemalcrStarter
 
         def list_dead_letters : Array(DeadLetterRecord)
           many(
-            <<-SQL,
+            <<-SQL
               SELECT id, original_event_id, event_type, event_data::text, aggregate_type, aggregate_id,
                 correlation_id, causation_id, failure_reason, retry_count, failed_at
               FROM dead_letter_events

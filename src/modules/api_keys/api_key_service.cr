@@ -17,14 +17,18 @@ module KemalcrStarter
           @secret_hasher = Infrastructure::Crypto::ApiKeySecretHasher.new(@settings.password_pepper)
         end
 
-        def list_for_actor(actor_id : String, organization_id : String)
+        def list_for_actor(actor_id : String, organization_id : String, limit : Int32 = 1000, offset : Int32 = 0)
           membership = @membership_repository.find_active_for_user_and_organization(actor_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot access this organization's API keys.") unless membership
           @rbac_service.not_nil!.authorize!(actor_id, organization_id, Core::Rbac::Permission::ApiKeyCreate, role: membership.not_nil!.role)
 
-          @api_key_repository.list_active_for_organization(organization_id).map do |api_key|
+          @api_key_repository.list_active_for_organization(organization_id, limit: limit, offset: offset).map do |api_key|
             serialize_api_key(api_key)
           end
+        end
+
+        def count_for_organization(organization_id : String) : Int64
+          @api_key_repository.count_active_for_organization(organization_id)
         end
 
         def create_for_actor(actor_id : String, organization_id : String, name : String)
@@ -78,26 +82,26 @@ module KemalcrStarter
 
         private def serialize_api_key(api_key : Infrastructure::DB::ApiKeyRecord)
           {
-            id:              api_key.id,
-            name:            api_key.name,
-            key_prefix:      api_key.key_prefix,
-            last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
-            expires_at:      api_key.expires_at.try(&.to_rfc3339),
-            revoked_at:      api_key.revoked_at.try(&.to_rfc3339),
-            created_at:      api_key.created_at.to_rfc3339,
+            id:           api_key.id,
+            name:         api_key.name,
+            key_prefix:   api_key.key_prefix,
+            last_used_at: api_key.last_used_at.try(&.to_rfc3339),
+            expires_at:   api_key.expires_at.try(&.to_rfc3339),
+            revoked_at:   api_key.revoked_at.try(&.to_rfc3339),
+            created_at:   api_key.created_at.to_rfc3339,
           }
         end
 
         private def serialize_created_api_key(api_key : Infrastructure::DB::ApiKeyRecord, secret : String)
           {
-            id:              api_key.id,
-            name:            api_key.name,
-            key_prefix:      api_key.key_prefix,
-            last_used_at:    api_key.last_used_at.try(&.to_rfc3339),
-            expires_at:      api_key.expires_at.try(&.to_rfc3339),
-            revoked_at:      api_key.revoked_at.try(&.to_rfc3339),
-            created_at:      api_key.created_at.to_rfc3339,
-            secret:          secret,
+            id:           api_key.id,
+            name:         api_key.name,
+            key_prefix:   api_key.key_prefix,
+            last_used_at: api_key.last_used_at.try(&.to_rfc3339),
+            expires_at:   api_key.expires_at.try(&.to_rfc3339),
+            revoked_at:   api_key.revoked_at.try(&.to_rfc3339),
+            created_at:   api_key.created_at.to_rfc3339,
+            secret:       secret,
           }
         end
 

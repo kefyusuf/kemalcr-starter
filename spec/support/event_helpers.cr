@@ -9,8 +9,8 @@ class TestOrganizationCreated < KemalcrStarter::Core::Events::DomainEvent
   def initialize(@aggregate_id : String, @name : String, @owner_id : String,
                  correlation_id : String? = nil, causation_id : String? = nil)
     super(event_type: "test.organization.created", aggregate_type: "organization",
-          aggregate_id: @aggregate_id, correlation_id: correlation_id,
-          causation_id: causation_id)
+      aggregate_id: @aggregate_id, correlation_id: correlation_id,
+      causation_id: causation_id)
   end
 
   def event_data : JSON::Any
@@ -26,8 +26,8 @@ class TestUserLoggedIn < KemalcrStarter::Core::Events::DomainEvent
   def initialize(@aggregate_id : String, @email : String,
                  correlation_id : String? = nil, causation_id : String? = nil)
     super(event_type: "test.user.logged_in", aggregate_type: "user",
-          aggregate_id: @aggregate_id, correlation_id: correlation_id,
-          causation_id: causation_id)
+      aggregate_id: @aggregate_id, correlation_id: correlation_id,
+      causation_id: causation_id)
   end
 
   def event_data : JSON::Any
@@ -43,8 +43,8 @@ class TestApiKeyRevoked < KemalcrStarter::Core::Events::DomainEvent
   def initialize(@aggregate_id : String, @key_prefix : String,
                  correlation_id : String? = nil, causation_id : String? = nil)
     super(event_type: "test.api_key.revoked", aggregate_type: "api_key",
-          aggregate_id: @aggregate_id, correlation_id: correlation_id,
-          causation_id: causation_id)
+      aggregate_id: @aggregate_id, correlation_id: correlation_id,
+      causation_id: causation_id)
   end
 
   def event_data : JSON::Any

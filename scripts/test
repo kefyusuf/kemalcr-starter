@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+docker compose run --rm \
+  -e KEMAL_ENV=test \
+  app sh -lc "shards install && crystal run src/migrate.cr -- up && crystal spec"

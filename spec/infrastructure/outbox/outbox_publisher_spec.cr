@@ -3,7 +3,6 @@ require "../../spec_helper"
 require "../../support/event_helpers"
 require "../../support/db/test_database"
 
-
 class TestEventHandler
   include KemalcrStarter::Core::Events::EventHandler
 

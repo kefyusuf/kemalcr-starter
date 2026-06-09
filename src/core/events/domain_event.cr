@@ -48,8 +48,7 @@ module KemalcrStarter
           timestamp: String,
           correlation_id: String?,
           causation_id: String?,
-          data: JSON::Any
-        )
+          data: JSON::Any)
           parsed = JSON.parse(json).as_h
           {
             event_id:       parsed["event_id"].as_s,

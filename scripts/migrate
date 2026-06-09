@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+ACTION="${1:-up}"
+
+docker compose run --rm app sh -lc "crystal run src/migrate.cr -- ${ACTION}"

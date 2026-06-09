@@ -1,0 +1,15 @@
+name: spec-kemal
+version: 1.3.0
+
+development_dependencies:
+  kemal:
+    github: kemalcr/kemal
+  kemal-session:
+    github: kemalcr/kemal-session
+
+authors:
+  - Serdar Dogruyol <dogruyolserdar@gmail.com>
+
+crystal: ">= 1.12.0"
+
+license: MIT

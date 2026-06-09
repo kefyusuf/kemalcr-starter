@@ -9,7 +9,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, @organization_id : String, @name : String, correlation_id : String? = nil)
           super(event_type: "api_key.created", aggregate_type: "api_key",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any
@@ -24,7 +24,7 @@ module KemalcrStarter
 
         def initialize(@aggregate_id : String, @organization_id : String, correlation_id : String? = nil)
           super(event_type: "api_key.revoked", aggregate_type: "api_key",
-                aggregate_id: @aggregate_id, correlation_id: correlation_id)
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
         end
 
         def event_data : JSON::Any

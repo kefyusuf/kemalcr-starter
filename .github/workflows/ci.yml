@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: kemalcr
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Docker Compose configuration
+        run: docker compose config
+
+      - name: Build application image
+        run: docker compose build app
+
+      - name: Run format check
+        run: ./scripts/lint
+
+      - name: Run request and integration suite
+        run: |
+          docker compose run --rm \
+            -e KEMAL_ENV=test \
+            app sh -lc "crystal run src/migrate.cr -- reset && crystal spec spec/requests/system/system_spec.cr spec/infrastructure/db/user_repository_spec.cr spec/infrastructure/db/organization_membership_repository_spec.cr spec/requests/auth/auth_spec.cr spec/integration/auth/refresh_rotation_spec.cr spec/requests/me/me_spec.cr spec/requests/organizations/organizations_spec.cr spec/requests/api_keys/api_keys_spec.cr spec/integration/api_keys/api_key_auth_spec.cr spec/requests/idempotency/organizations_create_idempotency_spec.cr spec/requests/idempotency/organization_invitations_create_idempotency_spec.cr spec/requests/idempotency/auth_refresh_idempotency_spec.cr spec/requests/idempotency/api_keys_create_idempotency_spec.cr --error-trace"
+
+      - name: Validate OpenAPI YAML
+        run: |
+          docker compose run --rm \
+            app sh -lc "crystal eval 'require \"yaml\"; YAML.parse(File.read(\"openapi/openapi.yaml\")); puts \"openapi-ok\"'"
+
+      - name: Build release image
+        run: |
+          docker build -f docker/app/Dockerfile --target runtime -t kemalcr-runtime \
+            --build-arg APP_VERSION=0.1.0 \
+            --build-arg APP_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --build-arg APP_GIT_SHA="${GITHUB_SHA}" \
+            .
+
+      - name: Smoke test release image
+        run: |
+          docker compose up -d postgres redis
+          docker run -d --rm \
+            --name kemalcr-runtime-smoke \
+            --network kemalcr_default \
+            -p 3001:3000 \
+            -e HOST=0.0.0.0 \
+            -e PORT=3000 \
+            -e DATABASE_URL=postgres://postgres:postgres@postgres:5432/kemalcr_development \
+            -e REDIS_URL=redis://redis:6379/0 \
+            -e JWT_SECRET=change-me-in-real-environments \
+            -e PASSWORD_PEPPER=change-me-in-real-environments \
+            -e APP_NAME=kemalcr_starter \
+            kemalcr-runtime
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent http://127.0.0.1:3001/health > /tmp/kemalcr-health.json; then
+              cat /tmp/kemalcr-health.json
+              break
+            fi
+            sleep 2
+          done
+          test -s /tmp/kemalcr-health.json || (docker logs kemalcr-runtime-smoke && exit 1)
+          curl --fail --silent http://127.0.0.1:3001/version > /tmp/kemalcr-version.json
+          grep -q "\"version\":\"0.1.0\"" /tmp/kemalcr-version.json
+          grep -q "\"git_sha\":\"${GITHUB_SHA}\"" /tmp/kemalcr-version.json
+          grep -q "\"build_time\":\"" /tmp/kemalcr-version.json
+          cat /tmp/kemalcr-version.json
+
+      - name: Tear down Docker resources
+        if: always()
+        run: |
+          docker rm -f kemalcr-runtime-smoke || true
+          docker compose down -v --remove-orphans

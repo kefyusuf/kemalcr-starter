@@ -1,0 +1,967 @@
+openapi: 3.1.0
+info:
+  title: Kemal API Foundation
+  version: 0.1.0
+  description: |
+    API-first backend foundation built with Kemal and Crystal.
+tags:
+  - name: System
+  - name: Authentication
+  - name: Current Actor
+servers:
+  - url: http://localhost:3000
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /ready:
+    get:
+      tags:
+        - System
+      summary: Readiness check
+      operationId: getReady
+      responses:
+        '200':
+          description: Service is ready to receive traffic.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+  /version:
+    get:
+      tags:
+        - System
+      summary: Version endpoint
+      operationId: getVersion
+      responses:
+        '200':
+          description: Service version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+  /openapi:
+    get:
+      tags:
+        - System
+      summary: OpenAPI document
+      operationId: getOpenApi
+      responses:
+        '200':
+          description: OpenAPI specification.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /v1/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      operationId: postAuthLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Token pair returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh token pair
+      operationId: postAuthRefresh
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Fresh access and refresh tokens returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+  /v1/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout current session
+      operationId: postAuthLogout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current session revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /v1/auth/logout-all:
+    post:
+      tags:
+        - Authentication
+      summary: Logout all sessions
+      operationId: postAuthLogoutAll
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All sessions revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /v1/me:
+    get:
+      tags:
+        - Current Actor
+      summary: Current actor
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user and active organization context.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /v1/me/active-organization:
+    post:
+      tags:
+        - Current Actor
+      summary: Switch active organization
+      operationId: postMeActiveOrganization
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActiveOrganizationRequest'
+      responses:
+        '200':
+          description: New token set scoped to the selected organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/organizations:
+    get:
+      tags:
+        - Organizations
+      summary: List organizations for the current actor
+      operationId: getOrganizations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Organizations visible to the current actor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags:
+        - Organizations
+      summary: Create organization
+      operationId: postOrganizations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSummary'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/organizations/{organization_id}:
+    get:
+      tags:
+        - Organizations
+      summary: Get organization detail
+      operationId: getOrganizationById
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organization detail visible to the current actor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSummary'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+    patch:
+      tags:
+        - Organizations
+      summary: Update organization detail
+      operationId: patchOrganizationById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrganizationRequest'
+      responses:
+        '200':
+          description: Organization updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSummary'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/organizations/{organization_id}/memberships:
+    get:
+      tags:
+        - Memberships
+      summary: List organization memberships
+      operationId: getOrganizationMemberships
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Memberships visible for the requested organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MembershipListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/invitations:
+    get:
+      tags:
+        - Memberships
+      summary: List pending organization invitations
+      operationId: listOrganizationInvitations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pending invitations for the requested organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+    post:
+      tags:
+        - Memberships
+      summary: Invite an existing user into an organization
+      operationId: createOrganizationInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        '201':
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationInvitationDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/organizations/{organization_id}/invitations/{invitation_id}:
+    delete:
+      tags:
+        - Memberships
+      summary: Revoke a pending organization invitation
+      operationId: revokeOrganizationInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: invitation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Invitation revoked.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/invitations/{invitation_id}/accept:
+    post:
+      tags:
+        - Memberships
+      summary: Accept a pending organization invitation
+      operationId: acceptOrganizationInvitation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: invitation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invitation accepted and converted into an active membership.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMembershipDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/api-keys:
+    get:
+      tags:
+        - API Keys
+      summary: List active organization API keys
+      operationId: listOrganizationApiKeys
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Active API keys for the requested organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+    post:
+      tags:
+        - API Keys
+      summary: Create an organization API key
+      operationId: createOrganizationApiKey
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created and the secret returned once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedApiKeyResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/organizations/{organization_id}/api-keys/{api_key_id}:
+    delete:
+      tags:
+        - API Keys
+      summary: Revoke an organization API key
+      operationId: revokeOrganizationApiKey
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: api_key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key revoked.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-provided key for safe replay on selected write operations.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 255
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  responses:
+    UnauthorizedError:
+      description: Authentication failed or credentials are missing.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ForbiddenError:
+      description: The authenticated actor is not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ConflictError:
+      description: Request conflict such as idempotency mismatch.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequestsError:
+      description: Authentication throttling rejected the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - environment
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: kemalcr_starter
+        environment:
+          type: string
+          example: development
+    ReadyResponse:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            postgres: configured
+            redis: configured
+    VersionResponse:
+      type: object
+      required:
+        - service
+        - version
+        - build_time
+        - git_sha
+        - request_id
+      properties:
+        service:
+          type: string
+          example: kemalcr_starter
+        version:
+          type: string
+          example: 0.1.0
+        build_time:
+          type: string
+          example: '2026-05-06T11:00:00Z'
+        git_sha:
+          type: string
+          example: 0123456789abcdef0123456789abcdef01234567
+        request_id:
+          type: string
+          example: req_1234567890
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+    LogoutResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+    TokenPairResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          format: int32
+          example: 900
+        active_organization:
+          $ref: '#/components/schemas/OrganizationSummary'
+    UserSummary:
+      type: object
+      required:
+        - id
+        - email
+        - status
+      properties:
+        id:
+          type: string
+          example: usr_01jtxexample
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          example: active
+    OrganizationSummary:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+      properties:
+        id:
+          type: string
+          example: org_01jtxexample
+        slug:
+          type: string
+          example: acme
+        name:
+          type: string
+          example: Acme Inc.
+    MembershipSummary:
+      type: object
+      required:
+        - organization_id
+        - role
+        - status
+      properties:
+        organization_id:
+          type: string
+          example: org_01jtxexample
+        role:
+          type: string
+          enum:
+            - owner
+            - admin
+            - member
+        status:
+          type: string
+          example: active
+    OrganizationMembershipDetail:
+      type: object
+      required:
+        - id
+        - organization_id
+        - user_id
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          example: mem_01jtxexample
+        organization_id:
+          type: string
+          example: org_01jtxexample
+        user_id:
+          type: string
+          example: usr_01jtxexample
+        role:
+          type: string
+          enum:
+            - owner
+            - admin
+            - member
+        status:
+          type: string
+          example: active
+    MembershipListResponse:
+      type: object
+      required:
+        - memberships
+      properties:
+        memberships:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationMembershipDetail'
+    CreateInvitationRequest:
+      type: object
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          example: invited.user@example.com
+        role:
+          type: string
+          enum:
+            - admin
+            - member
+    OrganizationInvitationDetail:
+      type: object
+      required:
+        - id
+        - organization_id
+        - user_id
+        - email
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          example: mem_01jtxexample
+        organization_id:
+          type: string
+          example: org_01jtxexample
+        user_id:
+          type: string
+          example: usr_01jtxexample
+        email:
+          type: string
+          format: email
+          example: invited.user@example.com
+        role:
+          type: string
+          enum:
+            - admin
+            - member
+        status:
+          type: string
+          example: pending
+    InvitationListResponse:
+      type: object
+      required:
+        - invitations
+      properties:
+        invitations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationInvitationDetail'
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: deploy-bot
+    ApiKeySummary:
+      type: object
+      required:
+        - id
+        - organization_id
+        - name
+        - key_prefix
+        - created_at
+      properties:
+        id:
+          type: string
+          example: key_01jtxexample
+        organization_id:
+          type: string
+          example: org_01jtxexample
+        name:
+          type: string
+          example: deploy-bot
+        key_prefix:
+          type: string
+          example: kma_a1b2c3d4
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    CreatedApiKeyResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiKeySummary'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              example: kma_a1b2c3d4e5f6g7h8i9j0
+    ApiKeyListResponse:
+      type: object
+      required:
+        - api_keys
+      properties:
+        api_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeySummary'
+    OrganizationListResponse:
+      type: object
+      required:
+        - organizations
+      properties:
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationSummary'
+    MeResponse:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        active_organization:
+          $ref: '#/components/schemas/OrganizationSummary'
+        membership:
+          $ref: '#/components/schemas/MembershipSummary'
+    ActiveOrganizationRequest:
+      type: object
+      required:
+        - organization_id
+      properties:
+        organization_id:
+          type: string
+          example: org_01jtxexample
+    CreateOrganizationRequest:
+      type: object
+      required:
+        - slug
+        - name
+      properties:
+        slug:
+          type: string
+          example: acme
+        name:
+          type: string
+          example: Acme Inc.
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+          example: acme-platform
+        name:
+          type: string
+          example: Acme Platform
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+    ErrorObject:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+      properties:
+        code:
+          type: string
+          example: AUTH_INVALID_CREDENTIALS
+        message:
+          type: string
+          example: Email or password is invalid.
+        details:
+          type: object
+          additionalProperties: true
+        request_id:
+          type: string
+          example: req_01jtxexample
+        docs_url:
+          type: string
+          example: /docs/errors/AUTH_INVALID_CREDENTIALS
