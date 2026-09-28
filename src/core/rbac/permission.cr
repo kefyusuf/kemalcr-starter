@@ -10,6 +10,7 @@ module KemalcrStarter
         OrganizationListInvitations
         ApiKeyCreate
         ApiKeyRevoke
+        WebhookManage
 
         def to_s : String
           case self
@@ -21,6 +22,7 @@ module KemalcrStarter
           when OrganizationListInvitations then "organization:list_invitations"
           when ApiKeyCreate                then "api_key:create"
           when ApiKeyRevoke                then "api_key:revoke"
+          when WebhookManage               then "webhook:manage"
           else                                  "unknown"
           end
         end
@@ -35,6 +37,7 @@ module KemalcrStarter
           when "organization:list_invitations"  then OrganizationListInvitations
           when "api_key:create"                 then ApiKeyCreate
           when "api_key:revoke"                 then ApiKeyRevoke
+          when "webhook:manage"                 then WebhookManage
           else                                       raise "Unknown permission: #{value}"
           end
         end

@@ -1,0 +1,32 @@
+# Build artifacts
+/app
+/bin/
+/*.exe
+/*.dwarf
+/public/dist/
+
+# Environment secrets (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Runtime state
+/tmp/
+/log/
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local tooling caches / editor state
+.playwright-mcp/
+.claude/handoff/
+
+# Test / coverage
+/coverage/
+/.cache/

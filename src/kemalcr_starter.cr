@@ -12,6 +12,7 @@ require "./core/security/security_headers_handler"
 require "./core/security/cors_handler"
 require "./core/tenancy/authentication_handler"
 require "./core/events/events"
+require "./core/modules/module_registry"
 require "./core/events/handlers/organization_audit_handler"
 require "./core/events/handlers/membership_audit_handler"
 require "./core/events/handlers/api_key_audit_handler"
@@ -37,12 +38,22 @@ require "./infrastructure/outbox/redis_notifier"
 require "./infrastructure/outbox/outbox_publisher"
 require "./infrastructure/jwt/token_provider"
 require "./infrastructure/redis/client_manager"
+require "./infrastructure/email/email_adapter"
+require "./infrastructure/email/console_email_adapter"
+require "./infrastructure/email/smtp_email_adapter"
+require "./infrastructure/db/password_reset_token_repository"
 require "./modules/identity/events"
 require "./modules/identity/auth_service"
 require "./modules/identity/auth_throttle"
 require "./modules/identity/me_service"
 require "./modules/identity/me_routes"
 require "./modules/identity/auth_routes"
+require "./modules/identity/password_reset_service"
+require "./modules/identity/password_reset_routes"
+require "./infrastructure/db/webhook_repository"
+require "./modules/webhooks/webhook_service"
+require "./modules/webhooks/delivery_handler"
+require "./modules/webhooks/webhook_routes"
 require "./modules/api_keys/events"
 require "./modules/api_keys/api_key_service"
 require "./modules/api_keys/api_key_routes"
@@ -68,6 +79,9 @@ module KemalcrStarter
     @@outbox_publisher : Infrastructure::Outbox::OutboxPublisher?
     @@rbac_service : Core::Rbac::AuthorizationService?
     @@audit_log_repository : Infrastructure::DB::AuditLogRepository?
+    @@email_adapter : Infrastructure::Email::EmailAdapter?
+    @@password_reset_service : Modules::Identity::PasswordResetService?
+    @@webhook_service : Modules::Webhooks::WebhookService?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -95,6 +109,50 @@ module KemalcrStarter
 
     def self.install_auth_throttle(throttle : Modules::Identity::AuthThrottle) : Nil
       @@auth_throttle = throttle
+    end
+
+    def self.email_adapter : Infrastructure::Email::EmailAdapter
+      @@email_adapter ||= build_email_adapter
+    end
+
+    def self.install_email_adapter(adapter : Infrastructure::Email::EmailAdapter) : Nil
+      @@email_adapter = adapter
+    end
+
+    def self.password_reset_service : Modules::Identity::PasswordResetService
+      @@password_reset_service ||= Modules::Identity::PasswordResetService.new(
+        settings,
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        email_adapter,
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+      )
+    end
+
+    def self.webhook_service : Modules::Webhooks::WebhookService
+      @@webhook_service ||= Modules::Webhooks::WebhookService.new(
+        settings,
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+      )
+    end
+
+    private def self.build_email_adapter : Infrastructure::Email::EmailAdapter
+      case settings.email_adapter
+      when "smtp"
+        Infrastructure::Email::SmtpEmailAdapter.new(
+          settings.smtp_host,
+          settings.smtp_port,
+          settings.smtp_username,
+          settings.smtp_password,
+          settings.email_from
+        )
+      else
+        Infrastructure::Email::ConsoleEmailAdapter.new
+      end
     end
 
     def self.me_service : Modules::Identity::MeService
@@ -179,6 +237,11 @@ module KemalcrStarter
       handler_registry.register("identity.user.logged_in", Core::Events::UserAuditHandler.new(repo))
       handler_registry.register("identity.user.logged_out", Core::Events::UserAuditHandler.new(repo))
       handler_registry.register("identity.session.revoked", Core::Events::UserAuditHandler.new(repo))
+      handler_registry.register("identity.user.password_reset", Core::Events::UserAuditHandler.new(repo))
+
+      if Core::Plugins::ModuleRegistry.enabled?(settings, "webhooks")
+        handler_registry.register("*", Modules::Webhooks::DeliveryHandler.new(webhook_service))
+      end
     end
 
     def self.reset_services : Nil
@@ -192,6 +255,9 @@ module KemalcrStarter
       @@outbox_publisher = nil
       @@rbac_service = nil
       @@audit_log_repository = nil
+      @@email_adapter = nil
+      @@password_reset_service = nil
+      @@webhook_service = nil
     end
 
     def self.configure : Nil
@@ -361,6 +427,14 @@ module KemalcrStarter
       Modules::Identity::MeRoutes.draw
       Modules::ApiKeys::ApiKeyRoutes.draw
       Modules::Organizations::OrganizationRoutes.draw
+
+      if Core::Plugins::ModuleRegistry.enabled?(settings, "password_reset")
+        Modules::Identity::PasswordResetRoutes.draw
+      end
+
+      if Core::Plugins::ModuleRegistry.enabled?(settings, "webhooks")
+        Modules::Webhooks::WebhookRoutes.draw
+      end
     end
 
     def self.publisher_health : String

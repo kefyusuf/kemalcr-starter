@@ -89,6 +89,19 @@ module KemalcrStarter
           end
         end
 
+        def update_password_digest(id : String, password_digest : String) : Nil
+          exec(
+            <<-SQL,
+              UPDATE users
+              SET password_digest = $2,
+                  updated_at = NOW()
+              WHERE id = $1
+            SQL
+            id,
+            password_digest
+          )
+        end
+
         def touch_last_login(id : String, at : Time) : Nil
           exec(
             <<-SQL,

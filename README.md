@@ -46,6 +46,24 @@ Multi-tenant API foundation with tenant-aware identity, organization management,
 - Selected POST endpoints: organization create, invitation create, auth refresh, API key create
 - Redis lock + PostgreSQL persistence with fingerprint-based replay detection
 
+### Password Reset (pluggable module)
+- `POST /v1/auth/password-reset/request` — always 202, no user enumeration
+- `POST /v1/auth/password-reset/confirm` — updates password, revokes all sessions
+- Email delivery via swappable adapter (`EMAIL_ADAPTER=console|smtp`)
+- One-time hashed tokens with configurable TTL (`PASSWORD_RESET_TTL_MINUTES`)
+
+### Outbound Webhooks (pluggable module)
+- Org-scoped endpoint CRUD under `/v1/organizations/:id/webhooks`
+- Event-type filtering (empty list = all events)
+- HMAC-SHA256 signed payloads (`X-Webhook-Signature: sha256=...`)
+- Delivery ledger with per-endpoint attempt tracking
+- Integrated with outbox publisher — failures retry with backoff, then dead-letter
+
+### Plug-and-Play Modules
+- `ENABLED_MODULES=password_reset,webhooks` toggles optional modules
+- Email adapter swap via `App.install_email_adapter` (console default)
+- Wildcard event handlers (`*`) for fan-out integrations
+
 ### Cross-Cutting
 - CORS middleware with configurable origins (`CORS_ORIGINS`)
 - Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
@@ -76,7 +94,7 @@ curl http://localhost:3000/version
 ## Testing
 
 ```sh
-./scripts/test          # Run all specs (158 examples, 0 failures)
+./scripts/test          # Run all specs (164 examples, 0 failures)
 ./scripts/lint          # Crystal format check
 ```
 

@@ -12,7 +12,9 @@ module KemalcrStarter
         end
 
         def handlers_for(event_type : String) : Array(EventHandler)
-          @handlers.fetch(event_type, [] of EventHandler)
+          specific = @handlers.fetch(event_type, [] of EventHandler)
+          wildcards = @handlers.fetch("*", [] of EventHandler)
+          specific + wildcards
         end
 
         def clear : Nil

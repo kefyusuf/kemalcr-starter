@@ -44,6 +44,21 @@ module KemalcrStarter
         end
       end
 
+      class UserPasswordReset < Core::Events::DomainEvent
+        getter event_type : String = "identity.user.password_reset"
+        getter aggregate_type : String = "user"
+        getter email : String
+
+        def initialize(@aggregate_id : String, @email : String, correlation_id : String? = nil)
+          super(event_type: "identity.user.password_reset", aggregate_type: "user",
+            aggregate_id: @aggregate_id, correlation_id: correlation_id)
+        end
+
+        def event_data : JSON::Any
+          JSON.parse({email: @email}.to_json)
+        end
+      end
+
       class SessionRevoked < Core::Events::DomainEvent
         getter event_type : String = "identity.session.revoked"
         getter aggregate_type : String = "session"

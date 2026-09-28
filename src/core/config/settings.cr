@@ -25,7 +25,16 @@ module KemalcrStarter
         event_poll_interval_ms : Int32,
         event_batch_size : Int32,
         event_max_retries : Int32,
-        always_rescue : Bool do
+        always_rescue : Bool,
+        email_adapter : String,
+        email_from : String,
+        smtp_host : String,
+        smtp_port : Int32,
+        smtp_username : String?,
+        smtp_password : String?,
+        password_reset_ttl_minutes : Int32,
+        password_reset_base_url : String,
+        enabled_modules : Array(String) do
         def self.from_env(*, version : String) : Settings
           environment = ENV["KEMAL_ENV"]? || "development"
 
@@ -53,7 +62,16 @@ module KemalcrStarter
             event_poll_interval_ms: ENV["EVENT_POLL_INTERVAL_MS"]?.try(&.to_i) || 100,
             event_batch_size: ENV["EVENT_BATCH_SIZE"]?.try(&.to_i) || 50,
             event_max_retries: ENV["EVENT_MAX_RETRIES"]?.try(&.to_i) || 5,
-            always_rescue: (ENV["ALWAYS_RESCUE"]? || "false") == "true"
+            always_rescue: (ENV["ALWAYS_RESCUE"]? || "false") == "true",
+            email_adapter: ENV["EMAIL_ADAPTER"]? || "console",
+            email_from: ENV["EMAIL_FROM"]? || "no-reply@localhost",
+            smtp_host: ENV["SMTP_HOST"]? || "localhost",
+            smtp_port: ENV["SMTP_PORT"]?.try(&.to_i) || 25,
+            smtp_username: ENV["SMTP_USERNAME"]?,
+            smtp_password: ENV["SMTP_PASSWORD"]?,
+            password_reset_ttl_minutes: ENV["PASSWORD_RESET_TTL_MINUTES"]?.try(&.to_i) || 60,
+            password_reset_base_url: ENV["PASSWORD_RESET_BASE_URL"]? || "http://localhost:3000/password-reset",
+            enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks").split(",").map(&.strip).reject(&.empty?)
           )
         end
       end
