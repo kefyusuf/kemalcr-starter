@@ -28,7 +28,8 @@ Thumbs.db
 
 # Local tooling caches / editor state
 .playwright-mcp/
-.claude/handoff/
+.claude/
+.planning/
 
 # Test / coverage
 /coverage/
