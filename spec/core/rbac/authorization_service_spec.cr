@@ -77,9 +77,9 @@ describe KemalcrStarter::Core::Rbac::AuthorizationService do
       admin_perms = repo.list_permissions_for_role("admin")
       member_perms = repo.list_permissions_for_role("member")
 
-      owner_perms.size.should eq(9)
-      admin_perms.size.should eq(8)
-      member_perms.size.should eq(1)
+      owner_perms.size.should eq(11)
+      admin_perms.size.should eq(10)
+      member_perms.size.should eq(2)
     end
   end
 end

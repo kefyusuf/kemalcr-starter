@@ -54,6 +54,15 @@ require "./infrastructure/db/webhook_repository"
 require "./modules/webhooks/webhook_service"
 require "./modules/webhooks/delivery_handler"
 require "./modules/webhooks/webhook_routes"
+require "./infrastructure/db/product_repository"
+require "./modules/products/events"
+require "./modules/products/product_service"
+require "./modules/products/product_routes"
+require "./infrastructure/billing/billing_adapter"
+require "./infrastructure/billing/null_billing_adapter"
+require "./infrastructure/billing/stripe_billing_adapter"
+require "./modules/billing/billing_service"
+require "./modules/billing/billing_routes"
 require "./modules/api_keys/events"
 require "./modules/api_keys/api_key_service"
 require "./modules/api_keys/api_key_routes"
@@ -82,6 +91,9 @@ module KemalcrStarter
     @@email_adapter : Infrastructure::Email::EmailAdapter?
     @@password_reset_service : Modules::Identity::PasswordResetService?
     @@webhook_service : Modules::Webhooks::WebhookService?
+    @@product_service : Modules::Products::ProductService?
+    @@billing_adapter : Infrastructure::Billing::BillingAdapter?
+    @@billing_service : Modules::Billing::BillingService?
 
     def self.settings : Core::Config::Settings
       @@settings ||= Core::Config::Settings.from_env(version: VERSION)
@@ -138,6 +150,43 @@ module KemalcrStarter
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
         )
       )
+    end
+
+    def self.product_service : Modules::Products::ProductService
+      @@product_service ||= Modules::Products::ProductService.new(
+        settings,
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
+      )
+    end
+
+    def self.billing_adapter : Infrastructure::Billing::BillingAdapter
+      @@billing_adapter ||= build_billing_adapter
+    end
+
+    def self.install_billing_adapter(adapter : Infrastructure::Billing::BillingAdapter) : Nil
+      @@billing_adapter = adapter
+    end
+
+    def self.billing_service : Modules::Billing::BillingService
+      @@billing_service ||= Modules::Billing::BillingService.new(
+        settings,
+        Infrastructure::DB::ConnectionManager.client(settings.database_url),
+        billing_adapter
+      )
+    end
+
+    private def self.build_billing_adapter : Infrastructure::Billing::BillingAdapter
+      case settings.billing_adapter
+      when "stripe"
+        key = settings.stripe_api_key
+        raise ArgumentError.new("STRIPE_API_KEY is required when BILLING_ADAPTER=stripe") unless key
+        Infrastructure::Billing::StripeBillingAdapter.new(key)
+      else
+        Infrastructure::Billing::NullBillingAdapter.new
+      end
     end
 
     private def self.build_email_adapter : Infrastructure::Email::EmailAdapter
@@ -258,6 +307,9 @@ module KemalcrStarter
       @@email_adapter = nil
       @@password_reset_service = nil
       @@webhook_service = nil
+      @@product_service = nil
+      @@billing_adapter = nil
+      @@billing_service = nil
     end
 
     def self.configure : Nil
@@ -434,6 +486,14 @@ module KemalcrStarter
 
       if Core::Plugins::ModuleRegistry.enabled?(settings, "webhooks")
         Modules::Webhooks::WebhookRoutes.draw
+      end
+
+      if Core::Plugins::ModuleRegistry.enabled?(settings, "products")
+        Modules::Products::ProductRoutes.draw
+      end
+
+      if Core::Plugins::ModuleRegistry.enabled?(settings, "billing")
+        Modules::Billing::BillingRoutes.draw
       end
     end
 

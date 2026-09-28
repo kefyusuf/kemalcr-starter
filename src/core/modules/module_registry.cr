@@ -18,7 +18,7 @@ module KemalcrStarter
         end
 
         def known_pluggable : Array(String)
-          {"password_reset", "webhooks"}.to_a
+          {"password_reset", "webhooks", "products", "billing"}.to_a
         end
       end
     end

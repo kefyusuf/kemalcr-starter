@@ -7,7 +7,11 @@ info:
 tags:
   - name: System
   - name: Authentication
+  - name: Password Reset
   - name: Current Actor
+  - name: Webhooks
+  - name: Products
+  - name: Billing
 servers:
   - url: http://localhost:3000
 paths:
@@ -63,6 +67,80 @@ paths:
             application/yaml:
               schema:
                 type: string
+  /v1/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      operationId: postAuthRegister
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created and token pair returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+  /v1/auth/password-reset/request:
+    post:
+      tags:
+        - Password Reset
+      summary: Request a password reset email
+      description: Always returns 202 to avoid user enumeration.
+      operationId: postPasswordResetRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: Accepted. Email sent when the address exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+  /v1/auth/password-reset/confirm:
+    post:
+      tags:
+        - Password Reset
+      summary: Confirm password reset with token
+      operationId: postPasswordResetConfirm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '200':
+          description: Password updated and sessions revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
   /v1/auth/login:
     post:
       tags:
@@ -526,6 +604,344 @@ paths:
           $ref: '#/components/responses/UnauthorizedError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/webhooks:
+    post:
+      tags:
+        - Webhooks
+      summary: Create a webhook endpoint
+      operationId: createWebhookEndpoint
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+      responses:
+        '201':
+          description: Endpoint created. Secret is returned once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedWebhookResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      tags:
+        - Webhooks
+      summary: List webhook endpoints
+      operationId: listWebhookEndpoints
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook endpoints.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/webhooks/{webhook_id}:
+    delete:
+      tags:
+        - Webhooks
+      summary: Revoke a webhook endpoint
+      operationId: revokeWebhookEndpoint
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Endpoint revoked.
+        '404':
+          description: Endpoint not found.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/webhooks/{webhook_id}/deliveries:
+    get:
+      tags:
+        - Webhooks
+      summary: List delivery attempts for a webhook endpoint
+      operationId: listWebhookDeliveries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Delivery ledger.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/products:
+    post:
+      tags:
+        - Products
+      summary: Create a product
+      operationId: createProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '201':
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      tags:
+        - Products
+      summary: List products
+      operationId: listProducts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Products.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/products/{product_id}:
+    get:
+      tags:
+        - Products
+      summary: Get a product
+      operationId: getProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+    patch:
+      tags:
+        - Products
+      summary: Update a product
+      operationId: updateProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+      responses:
+        '200':
+          description: Product updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Products
+      summary: Delete a product
+      operationId: deleteProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product deleted.
+        '404':
+          description: Product not found.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+  /v1/organizations/{organization_id}/billing/checkout:
+    post:
+      tags:
+        - Billing
+      summary: Create a billing checkout session
+      operationId: createBillingCheckout
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutRequest'
+      responses:
+        '201':
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /v1/billing/provider:
+    get:
+      tags:
+        - Billing
+      summary: Active billing provider
+      operationId: getBillingProvider
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Provider identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingProviderResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
 components:
   parameters:
     IdempotencyKey:
@@ -965,3 +1381,281 @@ components:
         docs_url:
           type: string
           example: /docs/errors/AUTH_INVALID_CREDENTIALS
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+    PasswordResetRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+    PasswordResetConfirmRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 8
+    AcceptedResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: accepted
+    CreateWebhookRequest:
+      type: object
+      required:
+        - url
+        - event_types
+      properties:
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+          nullable: true
+        event_types:
+          type: array
+          items:
+            type: string
+          description: Empty array subscribes to all events.
+    WebhookEndpoint:
+      type: object
+      required:
+        - id
+        - url
+        - event_types
+        - active
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+          nullable: true
+        event_types:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    CreatedWebhookResponse:
+      allOf:
+        - $ref: '#/components/schemas/WebhookEndpoint'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: Shown once at creation. Used to verify X-Webhook-Signature.
+    WebhookListResponse:
+      type: object
+      required:
+        - webhooks
+        - count
+      properties:
+        webhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEndpoint'
+        count:
+          type: integer
+        request_id:
+          type: string
+    WebhookDelivery:
+      type: object
+      required:
+        - id
+        - event_id
+        - event_type
+        - status
+      properties:
+        id:
+          type: string
+        event_id:
+          type: string
+        event_type:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivered, failed]
+        attempt_count:
+          type: integer
+        response_status:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    WebhookDeliveryListResponse:
+      type: object
+      required:
+        - deliveries
+        - count
+      properties:
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookDelivery'
+        count:
+          type: integer
+        request_id:
+          type: string
+    CreateProductRequest:
+      type: object
+      required:
+        - sku
+        - name
+        - price_cents
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          default: USD
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [active, archived]
+    Product:
+      type: object
+      required:
+        - id
+        - organization_id
+        - sku
+        - name
+        - price_cents
+        - currency
+        - status
+      properties:
+        id:
+          type: string
+        organization_id:
+          type: string
+        sku:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_cents:
+          type: integer
+        currency:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProductListResponse:
+      type: object
+      required:
+        - products
+        - count
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        count:
+          type: integer
+        request_id:
+          type: string
+    CreateCheckoutRequest:
+      type: object
+      required:
+        - price_id
+        - success_url
+        - cancel_url
+      properties:
+        price_id:
+          type: string
+        success_url:
+          type: string
+          format: uri
+        cancel_url:
+          type: string
+          format: uri
+    CheckoutSessionResponse:
+      type: object
+      required:
+        - id
+        - url
+        - provider
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+          format: uri
+        provider:
+          type: string
+          example: stripe
+    BillingProviderResponse:
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          type: string
+          example: null
+        request_id:
+          type: string

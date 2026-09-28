@@ -14,6 +14,7 @@ module KemalcrStarter
 
         MEMBER_PERMISSIONS = Set{
           Permission::OrganizationListMemberships,
+          Permission::ProductList,
         }
 
         ROLE_PERMISSIONS = {

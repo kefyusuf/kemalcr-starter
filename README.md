@@ -59,9 +59,21 @@ Multi-tenant API foundation with tenant-aware identity, organization management,
 - Delivery ledger with per-endpoint attempt tracking
 - Integrated with outbox publisher — failures retry with backoff, then dead-letter
 
+### Products (pluggable module)
+- Org-scoped catalog CRUD under `/v1/organizations/:id/products`
+- SKU uniqueness per organization, RBAC (`product:manage` / `product:list`)
+- Domain events: `product.created`, `product.updated`, `product.deleted`
+- Template for adding new domain modules (see `docs/guides/adding-a-module.md`)
+
+### Billing (pluggable adapter)
+- `BillingAdapter` port with `null` (default) and `stripe` implementations
+- `POST /v1/organizations/:id/billing/checkout` creates a provider checkout session
+- Swap via `BILLING_ADAPTER=null|stripe` + `STRIPE_API_KEY`
+
 ### Plug-and-Play Modules
-- `ENABLED_MODULES=password_reset,webhooks` toggles optional modules
+- `ENABLED_MODULES=password_reset,webhooks,products,billing` toggles optional modules
 - Email adapter swap via `App.install_email_adapter` (console default)
+- Billing adapter swap via `App.install_billing_adapter` (null default)
 - Wildcard event handlers (`*`) for fan-out integrations
 
 ### Cross-Cutting

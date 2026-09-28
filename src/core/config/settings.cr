@@ -34,6 +34,8 @@ module KemalcrStarter
         smtp_password : String?,
         password_reset_ttl_minutes : Int32,
         password_reset_base_url : String,
+        billing_adapter : String,
+        stripe_api_key : String?,
         enabled_modules : Array(String) do
         def self.from_env(*, version : String) : Settings
           environment = ENV["KEMAL_ENV"]? || "development"
@@ -71,7 +73,9 @@ module KemalcrStarter
             smtp_password: ENV["SMTP_PASSWORD"]?,
             password_reset_ttl_minutes: ENV["PASSWORD_RESET_TTL_MINUTES"]?.try(&.to_i) || 60,
             password_reset_base_url: ENV["PASSWORD_RESET_BASE_URL"]? || "http://localhost:3000/password-reset",
-            enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks").split(",").map(&.strip).reject(&.empty?)
+            billing_adapter: ENV["BILLING_ADAPTER"]? || "null",
+            stripe_api_key: ENV["STRIPE_API_KEY"]?,
+            enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks,products,billing").split(",").map(&.strip).reject(&.empty?)
           )
         end
       end

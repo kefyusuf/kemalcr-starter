@@ -11,6 +11,8 @@ module KemalcrStarter
         ApiKeyCreate
         ApiKeyRevoke
         WebhookManage
+        ProductManage
+        ProductList
 
         def to_s : String
           case self
@@ -23,6 +25,8 @@ module KemalcrStarter
           when ApiKeyCreate                then "api_key:create"
           when ApiKeyRevoke                then "api_key:revoke"
           when WebhookManage               then "webhook:manage"
+          when ProductManage               then "product:manage"
+          when ProductList                 then "product:list"
           else                                  "unknown"
           end
         end
@@ -38,6 +42,8 @@ module KemalcrStarter
           when "api_key:create"                 then ApiKeyCreate
           when "api_key:revoke"                 then ApiKeyRevoke
           when "webhook:manage"                 then WebhookManage
+          when "product:manage"                 then ProductManage
+          when "product:list"                   then ProductList
           else                                       raise "Unknown permission: #{value}"
           end
         end

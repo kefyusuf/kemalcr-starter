@@ -16,6 +16,6 @@ module TestDatabase
   end
 
   def truncate_all! : Nil
-    database.exec "TRUNCATE TABLE audit_logs, idempotency_keys, api_keys, organization_memberships, organizations, user_sessions, users, outbox_events, dead_letter_events, rbac_role_permissions, password_reset_tokens, webhook_deliveries, webhook_endpoints, processed_events RESTART IDENTITY CASCADE"
+    database.exec "TRUNCATE TABLE audit_logs, idempotency_keys, api_keys, organization_memberships, organizations, user_sessions, users, outbox_events, dead_letter_events, rbac_role_permissions, password_reset_tokens, webhook_deliveries, webhook_endpoints, processed_events, products RESTART IDENTITY CASCADE"
   end
 end
