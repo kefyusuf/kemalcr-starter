@@ -2,9 +2,7 @@
 
 Docker-first multi-tenant API platform built with **Crystal**, **Kemal**, **PostgreSQL**, and **Redis**.
 
-A production-minded shared kernel: identity, organizations, API keys, RBAC, idempotent writes, an outbox event bus, outbound webhooks, and plug-and-play domain modules — so you can ship a B2B/SaaS API without reinventing auth and tenancy.
-
-**Why Crystal/Kemal?** Native speed, small static binary, Ruby-like syntax, and a simple fiber concurrency model. This starter packages the boring infrastructure so you can focus on your product module.
+Identity, organizations, API keys, RBAC, idempotent writes, an outbox event bus, outbound webhooks, and plug-and-play domain modules — so you can ship a B2B/SaaS API without reinventing auth and tenancy.
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -20,154 +18,156 @@ A production-minded shared kernel: identity, organizations, API keys, RBAC, idem
 └──────────────┴──────────────────────────────────────────────┘
 ```
 
-## Implemented Capabilities
+## Quick start (5 minutes)
 
-### System & Observability
-- `GET /health`, `GET /ready`, `GET /version`, `GET /openapi`
-- Structured access logging (method, path, status, duration, actor_id, org_id)
-- Outbox event system with background publisher, retry with backoff, dead letter queue
-- Audit log handlers for all domain events (organization, membership, API key, user)
-- Event metrics and dead letter management endpoints
-
-### Authentication
-- `POST /v1/auth/register` with password policy validation (min 8 chars, upper/lower/digit)
-- `POST /v1/auth/login` with JWT access + refresh token pair
-- `POST /v1/auth/refresh` with rotation and reuse detection (family revocation)
-- `POST /v1/auth/logout`, `POST /v1/auth/logout-all`
-- Redis-backed fixed-window throttling (login, refresh, register)
-- Machine authentication via `X-API-Key` header
-
-### Authorization (RBAC)
-- Three built-in roles: owner, admin, member
-- Permission enum covering organizations, API keys, webhooks, and products
-- Owner gets all permissions, admin gets all except org delete, member gets read/list subset
-- Endpoints to seed, list permissions, and manage role-permission assignments
-
-### Current Actor
-- `GET /v1/me` — authenticated actor profile with organization context
-- `POST /v1/me/active-organization` — switch active organization, reissue tokens
-
-### Organizations
-- Create, list (paginated), detail, update
-- Membership listing (paginated)
-- Invitation create, list (paginated), accept, revoke
-- RBAC-guarded write operations
-
-### API Keys
-- Create, list (paginated), revoke
-- Organization-scoped machine-to-machine authentication
-- Secret revealed only at creation
-
-### Idempotency
-- Selected POST endpoints: organization create, invitation create, auth refresh, API key create
-- Redis lock + PostgreSQL persistence with fingerprint-based replay detection
-
-### Password Reset (pluggable module)
-- `POST /v1/auth/password-reset/request` — always 202, no user enumeration
-- `POST /v1/auth/password-reset/confirm` — updates password, revokes all sessions
-- Email delivery via swappable adapter (`EMAIL_ADAPTER=console|smtp`)
-- One-time hashed tokens with configurable TTL (`PASSWORD_RESET_TTL_MINUTES`)
-
-### Outbound Webhooks (pluggable module)
-- Org-scoped endpoint CRUD under `/v1/organizations/:id/webhooks`
-- Event-type filtering (empty list = all events)
-- HMAC-SHA256 signed payloads (`X-Webhook-Signature: sha256=...`)
-- Delivery ledger with per-endpoint attempt tracking
-- Integrated with outbox publisher — failures retry with backoff, then dead-letter
-
-### Products (pluggable module)
-- Org-scoped catalog CRUD under `/v1/organizations/:id/products`
-- SKU uniqueness per organization, RBAC (`product:manage` / `product:list`)
-- Domain events: `product.created`, `product.updated`, `product.deleted`
-- Template for adding new domain modules (see `docs/guides/adding-a-module.md`)
-
-### Billing (pluggable adapter)
-- `BillingAdapter` port with `null` (default) and `stripe` implementations
-- `POST /v1/organizations/:id/billing/checkout` creates a provider checkout session
-- `POST /v1/billing/webhooks/stripe` — Stripe signature-verified webhook receiver
-- Swap via `BILLING_ADAPTER=null|stripe` + `STRIPE_API_KEY` + `STRIPE_WEBHOOK_SECRET`
-
-### Plug-and-Play Modules
-- `ENABLED_MODULES=password_reset,webhooks,products,billing` toggles optional modules
-- Email adapter swap via `App.install_email_adapter` (console default)
-- Billing adapter swap via `App.install_billing_adapter` (null default)
-- Wildcard event handlers (`*`) for fan-out integrations
-
-### Cross-Cutting
-- CORS middleware with configurable origins (`CORS_ORIGINS`)
-- Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
-- Structured error responses with typed error classes (401/403/409/422/429)
-- Request correlation via `X-Request-Id`
-
-## Stack
-
-- Crystal 1.17.1+
-- Kemal 1.11.0
-- PostgreSQL 16, Redis 7
-- Docker Compose V2
-
-## Quick Start
+**Prerequisites:** Docker with Compose v2.
 
 ```sh
+git clone https://github.com/kefyusuf/kemalcr-starter.git
+cd kemalcr-starter
 ./scripts/dev
 ```
 
-Verify:
+That builds the app image and starts `app` + `postgres` + `redis` on port **3000**.
 
 ```sh
-curl http://localhost:3000/health
-curl http://localhost:3000/ready
-curl http://localhost:3000/version
+curl -s http://localhost:3000/health
+curl -s http://localhost:3000/ready
+curl -s http://localhost:3000/version
 ```
 
-## Testing
+### Your first API calls
 
 ```sh
-./scripts/test          # Run all specs (169 examples, 0 failures)
-./scripts/lint          # Crystal format check
+# 1) Register (password: min 8 chars, upper + lower + digit)
+TOKEN=$(curl -s -X POST http://localhost:3000/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ada","email":"ada@example.com","password":"Passw0rd!"}' \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+# 2) Create an organization
+ORG=$(curl -s -X POST http://localhost:3000/v1/organizations \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Acme","slug":"acme"}')
+ORG_ID=$(echo "$ORG" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+
+# 3) Create a product
+curl -s -X POST "http://localhost:3000/v1/organizations/$ORG_ID/products" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"sku":"SKU-1","name":"Widget","price_cents":1999,"currency":"USD"}'
+
+# 4) Create a webhook endpoint (secret is shown once)
+curl -s -X POST "http://localhost:3000/v1/organizations/$ORG_ID/webhooks" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com/hooks","description":"demo","event_types":[]}'
 ```
 
-## Authentication Modes
+Or run the full golden path in one shot:
 
-### Human (Bearer JWT)
-```
-POST /v1/auth/register   {"name", "email", "password"}  → 201 + token pair
-POST /v1/auth/login      {"email", "password"}          → 200 + token pair
+```sh
+./examples/smoke.sh
 ```
 
-### Machine (X-API-Key)
+### OpenAPI
+
+- Live document: `GET http://localhost:3000/openapi`
+- Source: [`openapi/openapi.yaml`](openapi/openapi.yaml)
+
+### Tests & lint
+
+```sh
+./scripts/test    # full spec suite
+./scripts/lint    # crystal tool format --check
 ```
-POST /v1/organizations/:id/api-keys  → 201 + secret (one-time)
-GET  /v1/organizations/:id           → via X-API-Key header
-GET  /v1/organizations/:id/memberships → via X-API-Key header
-```
+
+## What you get
+
+### System & observability
+- `GET /health`, `GET /ready`, `GET /version`, `GET /openapi`
+- Structured access logging (method, path, status, duration, actor_id, org_id)
+- Outbox event system with background publisher, retry with backoff, dead letter queue
+- Audit log handlers, event metrics, dead-letter admin endpoints
+
+### Authentication
+- `POST /v1/auth/register` with password policy (min 8, upper/lower/digit)
+- `POST /v1/auth/login` with JWT access + refresh token pair
+- `POST /v1/auth/refresh` with rotation and reuse detection (family revocation)
+- `POST /v1/auth/logout`, `POST /v1/auth/logout-all`
+- Redis-backed throttling (login, refresh, register)
+- Machine auth via `X-API-Key`
+- Password reset request/confirm (no user enumeration)
+
+### Authorization (RBAC)
+- Roles: owner, admin, member
+- Permissions for organizations, API keys, webhooks, products
+- Seed / list / manage role-permission assignments
+
+### Organizations & memberships
+- Create, list (paginated), detail, update
+- Membership listing, invitations (create/list/accept/revoke)
+- Active organization switch via `POST /v1/me/active-organization`
+
+### API keys
+- Create, list, revoke — org-scoped machine-to-machine auth
+- Secret revealed only at creation
+
+### Idempotency
+- Selected POST endpoints honor `Idempotency-Key` (Redis lock + PostgreSQL fingerprint)
+
+### Outbound webhooks (pluggable)
+- Org-scoped endpoints, event-type filters (empty = all)
+- HMAC-SHA256 signed payloads (`X-Webhook-Signature: sha256=...`)
+- Delivery ledger; failures retry via outbox, then dead-letter
+
+### Products (pluggable module template)
+- Org-scoped CRUD under `/v1/organizations/:id/products`
+- Events: `product.created`, `product.updated`, `product.deleted`
+- See [`docs/guides/adding-a-module.md`](docs/guides/adding-a-module.md)
+
+### Billing (pluggable adapter)
+- `BillingAdapter` port: `null` (default) and `stripe`
+- `POST /v1/organizations/:id/billing/checkout`
+- `POST /v1/billing/webhooks/stripe` — Stripe signature-verified receiver
+
+### Cross-cutting
+- CORS (`CORS_ORIGINS`), security headers, typed errors (401/403/409/422/429)
+- Request correlation via `X-Request-Id`
+
+## Configuration
+
+Copy or edit env values from [`.env.example`](.env.example). Highlights:
+
+| Variable | Purpose |
+|----------|---------|
+| `JWT_SECRET`, `PASSWORD_PEPPER` | **Change in production** |
+| `ENABLED_MODULES` | `password_reset,webhooks,products,billing` |
+| `EMAIL_ADAPTER` | `console` (default) or `smtp` |
+| `BILLING_ADAPTER` | `null` (default) or `stripe` |
+| `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe integration |
 
 ## Extending
 
 - Add a domain module: [`docs/guides/adding-a-module.md`](docs/guides/adding-a-module.md)
-- OpenAPI contract: `openapi/openapi.yaml`
-- Smoke flow example: `./examples/smoke.sh`
+- Architecture notes: [`docs/architecture/`](docs/architecture/)
+- Local development: [`docs/guides/local-development.md`](docs/guides/local-development.md)
 
-## Project Layout
+## Project layout
 
-- `src/` — application source (core/, infrastructure/, modules/)
-- `spec/` — request, integration, repository, and unit tests
-- `openapi/` — OpenAPI 3.1.0 contract (openapi.yaml)
+- `src/` — core/, infrastructure/, modules/
+- `spec/` — request, integration, repository, unit tests
+- `openapi/` — OpenAPI 3.1.0 contract
 - `db/migrations/` — PostgreSQL migrations
-- `docker/` — multi-stage Dockerfile (base → dev → build → runtime)
-- `docs/` — architecture, guides, roadmap
-- `examples/` — runnable API smoke script
+- `docker/` — multi-stage Dockerfile
+- `docs/` — architecture and guides
+- `examples/` — runnable API scripts
 - `scripts/` — dev, test, lint, migrate
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`):
-- Docker Compose config validation
-- Application image build
-- Crystal format check
-- Full test suite (request + integration + unit)
-- OpenAPI YAML parsing
-- Release image build and smoke test
+GitHub Actions (`.github/workflows/ci.yml`): compose validation, image build, format check, full test suite, OpenAPI parse, release image smoke test.
 
 ## License
 
