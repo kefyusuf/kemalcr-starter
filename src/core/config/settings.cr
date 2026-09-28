@@ -36,6 +36,8 @@ module KemalcrStarter
         password_reset_base_url : String,
         billing_adapter : String,
         stripe_api_key : String?,
+        stripe_webhook_secret : String?,
+        stripe_webhook_tolerance_seconds : Int32,
         enabled_modules : Array(String) do
         def self.from_env(*, version : String) : Settings
           environment = ENV["KEMAL_ENV"]? || "development"
@@ -75,6 +77,8 @@ module KemalcrStarter
             password_reset_base_url: ENV["PASSWORD_RESET_BASE_URL"]? || "http://localhost:3000/password-reset",
             billing_adapter: ENV["BILLING_ADAPTER"]? || "null",
             stripe_api_key: ENV["STRIPE_API_KEY"]?,
+            stripe_webhook_secret: ENV["STRIPE_WEBHOOK_SECRET"]?,
+            stripe_webhook_tolerance_seconds: ENV["STRIPE_WEBHOOK_TOLERANCE_SECONDS"]?.try(&.to_i) || 300,
             enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks,products,billing").split(",").map(&.strip).reject(&.empty?)
           )
         end

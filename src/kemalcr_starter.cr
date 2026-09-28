@@ -61,6 +61,8 @@ require "./modules/products/product_routes"
 require "./infrastructure/billing/billing_adapter"
 require "./infrastructure/billing/null_billing_adapter"
 require "./infrastructure/billing/stripe_billing_adapter"
+require "./infrastructure/billing/stripe_webhook_verifier"
+require "./modules/billing/events"
 require "./modules/billing/billing_service"
 require "./modules/billing/billing_routes"
 require "./modules/api_keys/events"
@@ -174,7 +176,10 @@ module KemalcrStarter
       @@billing_service ||= Modules::Billing::BillingService.new(
         settings,
         Infrastructure::DB::ConnectionManager.client(settings.database_url),
-        billing_adapter
+        billing_adapter,
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        )
       )
     end
 
@@ -294,6 +299,7 @@ module KemalcrStarter
     end
 
     def self.reset_services : Nil
+      @@settings = nil
       @@auth_service = nil
       @@auth_throttle = nil
       @@api_key_service = nil

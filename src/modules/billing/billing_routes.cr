@@ -16,6 +16,13 @@ module KemalcrStarter
         end
 
         def draw : Nil
+          post "/v1/billing/webhooks/stripe" do |env|
+            raw_body = env.request.body.try(&.gets_to_end).to_s
+            signature = env.request.headers["Stripe-Signature"]?
+            KemalcrStarter::App.billing_service.handle_stripe_webhook(raw_body, signature)
+            env.status(200).json({received: true})
+          end
+
           post "/v1/organizations/:organization_id/billing/checkout" do |env|
             actor_id = KemalcrStarter::App.request_context(env).actor_id
             raise Core::Errors::UnauthorizedError.new unless actor_id

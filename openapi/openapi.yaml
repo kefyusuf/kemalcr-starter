@@ -925,6 +925,41 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
         '422':
           $ref: '#/components/responses/ValidationError'
+  /v1/billing/webhooks/stripe:
+    post:
+      tags:
+        - Billing
+      summary: Stripe webhook receiver (signature verified)
+      description: |
+        Accepts Stripe webhook events. Requires a valid Stripe-Signature header
+        (t=...,v1=...) computed with STRIPE_WEBHOOK_SECRET. No bearer auth —
+        authenticity comes from the signature.
+      operationId: postStripeWebhook
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Event received (ignored types still return 200).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+        '401':
+          description: Missing or invalid Stripe-Signature.
   /v1/billing/provider:
     get:
       tags:

@@ -84,7 +84,8 @@ A production-minded shared kernel: identity, organizations, API keys, RBAC, idem
 ### Billing (pluggable adapter)
 - `BillingAdapter` port with `null` (default) and `stripe` implementations
 - `POST /v1/organizations/:id/billing/checkout` creates a provider checkout session
-- Swap via `BILLING_ADAPTER=null|stripe` + `STRIPE_API_KEY`
+- `POST /v1/billing/webhooks/stripe` — Stripe signature-verified webhook receiver
+- Swap via `BILLING_ADAPTER=null|stripe` + `STRIPE_API_KEY` + `STRIPE_WEBHOOK_SECRET`
 
 ### Plug-and-Play Modules
 - `ENABLED_MODULES=password_reset,webhooks,products,billing` toggles optional modules
