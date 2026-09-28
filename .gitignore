@@ -31,6 +31,10 @@ Thumbs.db
 .claude/
 .planning/
 
+# Internal design/roadmap notes — keep on disk, not in the public repo
+docs/roadmap/
+docs/superpowers/
+
 # Test / coverage
 /coverage/
 /.cache/
