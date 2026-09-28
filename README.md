@@ -1,8 +1,24 @@
 # Kemalcr Starter
 
-Docker-first API platform built with Crystal, Kemal, PostgreSQL, and Redis.
+Docker-first multi-tenant API platform built with **Crystal**, **Kemal**, **PostgreSQL**, and **Redis**.
 
-Multi-tenant API foundation with tenant-aware identity, organization management, API key authentication, idempotent writes, event-driven architecture, RBAC authorization, and rate limiting.
+A production-minded shared kernel: identity, organizations, API keys, RBAC, idempotent writes, an outbox event bus, outbound webhooks, and plug-and-play domain modules — so you can ship a B2B/SaaS API without reinventing auth and tenancy.
+
+**Why Crystal/Kemal?** Native speed, small static binary, Ruby-like syntax, and a simple fiber concurrency model. This starter packages the boring infrastructure so you can focus on your product module.
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                     HTTP (Kemal)                            │
+├──────────────┬──────────────────────────────────────────────┤
+│   core/      │ errors · RBAC · events · idempotency · HTTP  │
+├──────────────┼──────────────────────────────────────────────┤
+│   modules/   │ identity · organizations · api_keys          │
+│              │ products · webhooks · billing (optional)     │
+├──────────────┼──────────────────────────────────────────────┤
+│ infrastructure/ │ email · billing · JWT · crypto · outbox   │
+│                 │ Postgres · Redis adapters                 │
+└──────────────┴──────────────────────────────────────────────┘
+```
 
 ## Implemented Capabilities
 
@@ -23,8 +39,8 @@ Multi-tenant API foundation with tenant-aware identity, organization management,
 
 ### Authorization (RBAC)
 - Three built-in roles: owner, admin, member
-- Permission enum: OrganizationUpdate, OrganizationInvite, OrganizationRevoke, OrganizationDelete, OrganizationListMemberships, OrganizationListInvitations, ApiKeyCreate, ApiKeyRevoke
-- Owner gets all 8 permissions, admin gets 7 (no delete), member gets 1 (list memberships)
+- Permission enum covering organizations, API keys, webhooks, and products
+- Owner gets all permissions, admin gets all except org delete, member gets read/list subset
 - Endpoints to seed, list permissions, and manage role-permission assignments
 
 ### Current Actor
@@ -106,7 +122,7 @@ curl http://localhost:3000/version
 ## Testing
 
 ```sh
-./scripts/test          # Run all specs (164 examples, 0 failures)
+./scripts/test          # Run all specs (169 examples, 0 failures)
 ./scripts/lint          # Crystal format check
 ```
 
@@ -125,14 +141,21 @@ GET  /v1/organizations/:id           → via X-API-Key header
 GET  /v1/organizations/:id/memberships → via X-API-Key header
 ```
 
+## Extending
+
+- Add a domain module: [`docs/guides/adding-a-module.md`](docs/guides/adding-a-module.md)
+- OpenAPI contract: `openapi/openapi.yaml`
+- Smoke flow example: `./examples/smoke.sh`
+
 ## Project Layout
 
 - `src/` — application source (core/, infrastructure/, modules/)
-- `spec/` — request, integration, repository, and unit tests (26 spec files)
+- `spec/` — request, integration, repository, and unit tests
 - `openapi/` — OpenAPI 3.1.0 contract (openapi.yaml)
-- `db/migrations/` — 11 PostgreSQL migrations
+- `db/migrations/` — PostgreSQL migrations
 - `docker/` — multi-stage Dockerfile (base → dev → build → runtime)
 - `docs/` — architecture, guides, roadmap
+- `examples/` — runnable API smoke script
 - `scripts/` — dev, test, lint, migrate
 
 ## CI
@@ -144,3 +167,7 @@ GitHub Actions (`.github/workflows/ci.yml`):
 - Full test suite (request + integration + unit)
 - OpenAPI YAML parsing
 - Release image build and smoke test
+
+## License
+
+MIT — see [LICENSE](LICENSE).

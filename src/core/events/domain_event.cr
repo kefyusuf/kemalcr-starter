@@ -28,13 +28,13 @@ module KemalcrStarter
         def to_json : String
           JSON.build do |json|
             json.object do
-              json.field "event_id", @event_id
-              json.field "event_type", @event_type
-              json.field "aggregate_type", @aggregate_type
-              json.field "aggregate_id", @aggregate_id
-              json.field "timestamp", @timestamp.to_rfc3339
-              json.field "correlation_id", @correlation_id
-              json.field "causation_id", @causation_id
+              json.field "event_id", event_id
+              json.field "event_type", event_type
+              json.field "aggregate_type", aggregate_type
+              json.field "aggregate_id", aggregate_id
+              json.field "timestamp", timestamp.to_rfc3339
+              json.field "correlation_id", correlation_id
+              json.field "causation_id", causation_id
               json.field "data", event_data
             end
           end
