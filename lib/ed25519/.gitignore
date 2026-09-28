@@ -1,7 +1,0 @@
-.DS_Store
-.crystal
-.shards
-bin
-docs
-lib
-shard.lock

@@ -5,6 +5,9 @@
 /*.dwarf
 /public/dist/
 
+# Shards are installed by Docker / shards install — do not vendor
+/lib/
+
 # Environment secrets (keep .env.example)
 .env
 .env.local

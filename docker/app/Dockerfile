@@ -11,12 +11,13 @@ RUN apk add --no-cache \
     tzdata \
     yaml-dev
 
-COPY shard.yml ./
-RUN shards install
+COPY shard.yml shard.lock ./
+RUN shards install --production
 
 FROM base AS dev
 
 COPY . .
+RUN shards install
 
 EXPOSE 3000
 

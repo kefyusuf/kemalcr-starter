@@ -1,0 +1,14 @@
+.git
+.github
+.planning
+.claude
+.playwright-mcp
+lib
+bin
+tmp
+log
+coverage
+.cache
+*.log
+.env
+.env.*
