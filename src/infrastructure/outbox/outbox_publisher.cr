@@ -73,7 +73,7 @@ module KemalcrStarter
           handlers = @handler_registry.handlers_for(event.event_type)
           if handlers.empty?
             Log.warn { "No handlers registered for event_type=#{event.event_type} event_id=#{event.id}" }
-            @repository.mark_dispatched(event.id)
+            @repository.mark_dispatched(event)
             return
           end
 
@@ -86,19 +86,16 @@ module KemalcrStarter
               Log.error(exception: ex) { "Handler failed event_id=#{event.id} handler=#{handler.class.name}" }
               next_attempt = event.attempts + 1
               if next_attempt > @max_retries
-                @repository.move_to_dead_letter(event.id, ex.message)
-                @stats.increment_dead_letter
+                @stats.increment_dead_letter if @repository.move_to_dead_letter(event, ex.message)
               else
                 backoff = (2 ** (next_attempt - 1)).seconds
-                @repository.increment_retry(event.id, ex.message, backoff.seconds.to_i)
-                @stats.increment_failed
+                @stats.increment_failed if @repository.increment_retry(event, ex.message, backoff.seconds.to_i)
               end
               return
             end
           end
 
-          @repository.mark_dispatched(event.id)
-          @stats.increment_dispatched
+          @stats.increment_dispatched if @repository.mark_dispatched(event)
         rescue ex
           @stats.increment_failed
           Log.error(exception: ex) { "Outbox publisher: dispatch error event_id=#{event.id}" }
