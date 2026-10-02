@@ -22,7 +22,9 @@ module KemalcrStarter
 
       class WebhookService
         def initialize(@settings : Core::Config::Settings, @database : ::DB::Database,
-                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil)
+                       @event_repository : Infrastructure::DB::OutboxEventRepository? = nil,
+                       destination : Infrastructure::Http::WebhookDestination? = nil)
+          @destination = destination || Infrastructure::Http::WebhookDestination.new(@settings)
           @endpoint_repository = Infrastructure::DB::WebhookEndpointRepository.new(@database)
           @delivery_repository = Infrastructure::DB::WebhookDeliveryRepository.new(@database)
           @rbac_service = Core::Rbac::AuthorizationService.new(
@@ -32,8 +34,8 @@ module KemalcrStarter
 
         def create_endpoint(actor_id : String, organization_id : String, url : String,
                             description : String?, event_types : Array(String)) : CreatedEndpoint
-          validate_url!(url)
           @rbac_service.authorize!(actor_id, organization_id, Core::Rbac::Permission::WebhookManage)
+          @destination.validate!(url)
 
           id = "whk_#{UUID.random}"
           secret = Random::Secure.urlsafe_base64(32)
@@ -105,8 +107,8 @@ module KemalcrStarter
 
         private def deliver(endpoint : Infrastructure::DB::WebhookEndpointRecord, payload : String,
                             event_id : String, event_type : String) : Int32
-          uri = URI.parse(endpoint.url)
-          raise "invalid webhook url" unless uri.host
+          uri = @destination.validate!(endpoint.url)
+          address = @destination.resolve!(uri)
 
           signature = sign(endpoint.secret, payload)
           headers = HTTP::Headers{
@@ -117,16 +119,27 @@ module KemalcrStarter
             "X-Webhook-Signature" => "sha256=#{signature}",
           }
 
-          client = HTTP::Client.new(uri)
-          client.connect_timeout = 5.seconds
-          client.read_timeout = 10.seconds
+          host = uri.hostname.not_nil!
+          headers["Host"] = uri.port ? "#{uri.host}:#{uri.port}" : uri.host.not_nil!
+          tcp = TCPSocket.new(address.family)
+          client : HTTP::Client? = nil
           begin
-            response = client.post(uri.request_target, headers: headers, body: payload)
-            status = response.status_code
+            tcp.connect(address, timeout: 5.seconds)
+            tcp.read_timeout = 10.seconds
+            tcp.write_timeout = 10.seconds
+            io = if uri.scheme == "https"
+                   OpenSSL::SSL::Socket::Client.new(tcp, context: OpenSSL::SSL::Context::Client.new, sync_close: true, hostname: host)
+                 else
+                   tcp
+                 end
+            client = HTTP::Client.new(io, host, address.port)
+            client.compress = false
+            status = client.post(uri.request_target, headers: headers, body: payload) { |response| response.status_code }
             raise "webhook endpoint returned #{status}" unless (200...300).includes?(status)
             status
           ensure
-            client.close rescue nil
+            client.try(&.close) rescue nil
+            tcp.close rescue nil
           end
         end
 
@@ -144,15 +157,6 @@ module KemalcrStarter
             active: record.active,
             created_at: record.created_at.to_rfc3339
           )
-        end
-
-        private def validate_url!(url : String) : Nil
-          raise Core::Errors::ValidationError.new("Webhook URL is required.") if url.strip.empty?
-          uri = URI.parse(url.strip)
-          raise Core::Errors::ValidationError.new("Webhook URL must be absolute http(s).") unless uri.host
-          raise Core::Errors::ValidationError.new("Webhook URL must be absolute http(s).") unless uri.scheme == "http" || uri.scheme == "https"
-        rescue URI::Error
-          raise Core::Errors::ValidationError.new("Webhook URL must be absolute http(s).")
         end
       end
     end

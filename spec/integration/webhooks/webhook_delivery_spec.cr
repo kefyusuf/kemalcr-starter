@@ -7,7 +7,7 @@ module KemalcrStarter
     it "delivers signed product.created events to a subscribed endpoint" do
       TestDatabase.truncate_all!
 
-      settings = App.settings
+      settings = App.settings.copy_with(webhook_allow_test_loopback: true)
       hasher = Infrastructure::Crypto::PasswordHasher.new(settings.password_pepper, settings.password_hash_cost)
       users = Infrastructure::DB::UserRepository.new(TestDatabase.database)
       orgs = Infrastructure::DB::OrganizationRepository.new(TestDatabase.database)
@@ -70,7 +70,7 @@ module KemalcrStarter
     it "raises for failed delivery so outbox can retry" do
       TestDatabase.truncate_all!
 
-      settings = App.settings
+      settings = App.settings.copy_with(webhook_allow_test_loopback: true)
       users = Infrastructure::DB::UserRepository.new(TestDatabase.database)
       orgs = Infrastructure::DB::OrganizationRepository.new(TestDatabase.database)
       memberships = Infrastructure::DB::OrganizationMembershipRepository.new(TestDatabase.database)

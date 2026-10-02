@@ -1467,6 +1467,7 @@ components:
         url:
           type: string
           format: uri
+          description: Public HTTPS destination on port 443, without credentials or fragments. Every delivery validates resolved IPv4/IPv6 addresses; unsafe or unavailable DNS answers fail delivery. Local loopback HTTP is available only with explicit test configuration.
         description:
           type: string
           nullable: true
