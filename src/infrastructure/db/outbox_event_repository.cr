@@ -7,6 +7,7 @@ module KemalcrStarter
         aggregate_id : String,
         event_type : String,
         event_data : String,
+        organization_id : String?,
         correlation_id : String?,
         causation_id : String?,
         status : String,
@@ -20,25 +21,25 @@ module KemalcrStarter
 
       class OutboxEventRepository < Repository
         def create(event : Core::Events::DomainEvent) : Nil
-          exec <<-SQL, event.event_id, event.aggregate_type, event.aggregate_id, event.event_type, event.event_data.to_json, event.correlation_id, event.causation_id
+          exec <<-SQL, event.event_id, event.aggregate_type, event.aggregate_id, event.event_type, event.event_data.to_json, event.correlation_id, event.causation_id, event.organization_id
             INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, event_data,
-              correlation_id, causation_id)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+              correlation_id, causation_id, organization_id)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
           SQL
         end
 
         def create(event : Core::Events::DomainEvent, connection : ::DB::Connection) : Nil
-          connection.exec <<-SQL, event.event_id, event.aggregate_type, event.aggregate_id, event.event_type, event.event_data.to_json, event.correlation_id, event.causation_id
+          connection.exec <<-SQL, event.event_id, event.aggregate_type, event.aggregate_id, event.event_type, event.event_data.to_json, event.correlation_id, event.causation_id, event.organization_id
             INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, event_data,
-              correlation_id, causation_id)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+              correlation_id, causation_id, organization_id)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
           SQL
         end
 
         def next_batch(batch_size : Int32 = 50) : Array(OutboxEventRecord)
           rows = many(
             <<-SQL,
-              SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text,
+              SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text, organization_id,
                 correlation_id::text, causation_id::text, status, attempts, max_retries,
                 last_error, locked_at, polled_at, created_at, updated_at
               FROM outbox_events
@@ -56,6 +57,7 @@ module KemalcrStarter
               aggregate_id: rs.read(String),
               event_type: rs.read(String),
               event_data: rs.read(String),
+              organization_id: rs.read(String?),
               correlation_id: rs.read(String?),
               causation_id: rs.read(String?),
               status: rs.read(String),
@@ -93,13 +95,14 @@ module KemalcrStarter
         def move_to_dead_letter(event_id : String, failure_reason : String?) : Nil
           database.transaction do |txn|
             conn = txn.connection
-            record = conn.query_one?("SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text, correlation_id::text, causation_id::text, status, attempts, max_retries, last_error, locked_at, polled_at, created_at, updated_at FROM outbox_events WHERE id = $1", event_id) do |rs|
+            record = conn.query_one?("SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text, organization_id, correlation_id::text, causation_id::text, status, attempts, max_retries, last_error, locked_at, polled_at, created_at, updated_at FROM outbox_events WHERE id = $1", event_id) do |rs|
               OutboxEventRecord.new(
                 id: rs.read(String),
                 aggregate_type: rs.read(String),
                 aggregate_id: rs.read(String),
                 event_type: rs.read(String),
                 event_data: rs.read(String),
+                organization_id: rs.read(String?),
                 correlation_id: rs.read(String?),
                 causation_id: rs.read(String?),
                 status: rs.read(String),
@@ -113,9 +116,9 @@ module KemalcrStarter
               )
             end
             if record
-              conn.exec <<-SQL, event_id, record.event_type, record.event_data, record.aggregate_type, record.aggregate_id, record.correlation_id, record.causation_id, failure_reason, record.attempts
-                INSERT INTO dead_letter_events (original_event_id, event_type, event_data, aggregate_type, aggregate_id, correlation_id, causation_id, failure_reason, retry_count)
-                VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
+              conn.exec <<-SQL, event_id, record.event_type, record.event_data, record.aggregate_type, record.aggregate_id, record.correlation_id, record.causation_id, failure_reason, record.attempts, record.organization_id
+                INSERT INTO dead_letter_events (original_event_id, event_type, event_data, aggregate_type, aggregate_id, correlation_id, causation_id, failure_reason, retry_count, organization_id)
+                VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10)
               SQL
               conn.exec "UPDATE outbox_events SET status = 'dead_letter', locked_at = NULL, updated_at = NOW() WHERE id = $1", event_id
             end
@@ -136,13 +139,14 @@ module KemalcrStarter
         end
 
         def find(id : String) : OutboxEventRecord?
-          one? "SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text, correlation_id::text, causation_id::text, status, attempts, max_retries, last_error, locked_at, polled_at, created_at, updated_at FROM outbox_events WHERE id = $1", id do |rs|
+          one? "SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text, organization_id, correlation_id::text, causation_id::text, status, attempts, max_retries, last_error, locked_at, polled_at, created_at, updated_at FROM outbox_events WHERE id = $1", id do |rs|
             OutboxEventRecord.new(
               id: rs.read(String),
               aggregate_type: rs.read(String),
               aggregate_id: rs.read(String),
               event_type: rs.read(String),
               event_data: rs.read(String),
+              organization_id: rs.read(String?),
               correlation_id: rs.read(String?),
               causation_id: rs.read(String?),
               status: rs.read(String),
@@ -162,6 +166,7 @@ module KemalcrStarter
           original_event_id : String?,
           event_type : String,
           event_data : String,
+          organization_id : String?,
           aggregate_type : String,
           aggregate_id : String,
           correlation_id : String?,
@@ -173,7 +178,7 @@ module KemalcrStarter
         def list_dead_letters : Array(DeadLetterRecord)
           many(
             <<-SQL
-              SELECT id, original_event_id, event_type, event_data::text, aggregate_type, aggregate_id,
+              SELECT id, original_event_id, event_type, event_data::text, organization_id, aggregate_type, aggregate_id,
                 correlation_id, causation_id, failure_reason, retry_count, failed_at
               FROM dead_letter_events
               ORDER BY failed_at DESC
@@ -184,6 +189,7 @@ module KemalcrStarter
               original_event_id: rs.read(String?),
               event_type: rs.read(String),
               event_data: rs.read(String),
+              organization_id: rs.read(String?),
               aggregate_type: rs.read(String),
               aggregate_id: rs.read(String),
               correlation_id: rs.read(String?),
@@ -199,12 +205,13 @@ module KemalcrStarter
           result = false
           database.transaction do |txn|
             conn = txn.connection
-            dl = conn.query_one?("SELECT id, original_event_id, event_type, event_data::text, aggregate_type, aggregate_id, correlation_id, causation_id FROM dead_letter_events WHERE id = $1", dead_letter_id) do |rs|
+            dl = conn.query_one?("SELECT id, original_event_id, event_type, event_data::text, organization_id, aggregate_type, aggregate_id, correlation_id, causation_id FROM dead_letter_events WHERE id = $1", dead_letter_id) do |rs|
               DeadLetterRecord.new(
                 id: rs.read(String),
                 original_event_id: rs.read(String?),
                 event_type: rs.read(String),
                 event_data: rs.read(String),
+                organization_id: rs.read(String?),
                 aggregate_type: rs.read(String),
                 aggregate_id: rs.read(String),
                 correlation_id: rs.read(String?),
@@ -216,8 +223,8 @@ module KemalcrStarter
             end
 
             if dl
-              conn.exec "INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, event_data, correlation_id, causation_id) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)",
-                dl.id, dl.aggregate_type, dl.aggregate_id, dl.event_type, dl.event_data, dl.correlation_id, dl.causation_id
+              conn.exec "INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, event_data, correlation_id, causation_id, organization_id) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)",
+                dl.id, dl.aggregate_type, dl.aggregate_id, dl.event_type, dl.event_data, dl.correlation_id, dl.causation_id, dl.organization_id
               conn.exec "DELETE FROM dead_letter_events WHERE id = $1", dead_letter_id
               result = true
             end

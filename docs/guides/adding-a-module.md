@@ -26,6 +26,7 @@ Add a migration pair under `db/migrations/`:
 - Subclass `Core::Events::DomainEvent`
 - Use dotted event types: `product.created`, `product.updated`, `product.deleted`
 - Put tenant-scoped fields in `event_data` JSON
+- Set the event's `organization_id` ownership explicitly (constructor keyword or a typed getter). Tenant ownership is persisted separately from the payload; global events leave it unset.
 
 ## 4. Service
 
@@ -79,4 +80,4 @@ end
 ## Optional: fan-out
 
 Register a handler for your events (or `*` for all) via `HandlerRegistry`.
-Webhooks already subscribe to `*`, so new domain events are delivered automatically.
+Webhooks subscribe to `*`, but only tenant-owned events are delivered, and only to endpoints belonging to that organization. An empty endpoint filter selects all events owned by its organization. Global or unscoped events are never broadcast to tenant endpoints. See [webhook isolation and upgrades](../architecture/webhooks.md).

@@ -137,7 +137,8 @@ module KemalcrStarter
             aggregate_type: record.aggregate_type,
             aggregate_id: record.aggregate_id,
             correlation_id: record.correlation_id,
-            causation_id: record.causation_id
+            causation_id: record.causation_id,
+            organization_id: record.organization_id
           )
         end
 
