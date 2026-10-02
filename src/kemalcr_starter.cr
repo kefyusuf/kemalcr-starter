@@ -226,7 +226,9 @@ module KemalcrStarter
       @@api_key_service ||= Modules::ApiKeys::ApiKeyService.new(
         settings,
         Infrastructure::DB::ConnectionManager.client(settings.database_url),
-        nil,
+        Infrastructure::DB::OutboxEventRepository.new(
+          Infrastructure::DB::ConnectionManager.client(settings.database_url)
+        ),
         rbac_service
       )
     end

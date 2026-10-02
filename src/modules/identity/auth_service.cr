@@ -17,6 +17,7 @@ module KemalcrStarter
           @user_repository = Infrastructure::DB::UserRepository.new(@database)
           @session_repository = Infrastructure::DB::UserSessionRepository.new(@database)
           @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
+          @event_repository ||= Infrastructure::DB::OutboxEventRepository.new(@database)
         end
 
         def password_hasher : Infrastructure::Crypto::PasswordHasher
@@ -30,33 +31,37 @@ module KemalcrStarter
           normalized_email = email.strip.downcase
           password_digest = @password_hasher.hash(password)
 
-          begin
-            user = @user_repository.create(id: user_id, email: normalized_email, name: name, password_digest: password_digest)
-          rescue ex : ::DB::Error
-            if ex.message.try(&.downcase).to_s.includes?("unique")
-              raise Core::Errors::ConflictError.new("A user with this email already exists.")
+          @database.transaction do |txn|
+            user_repository = Infrastructure::DB::UserRepository.new(txn.connection)
+            session_repository = Infrastructure::DB::UserSessionRepository.new(txn.connection)
+            begin
+              user = user_repository.create(id: user_id, email: normalized_email, name: name, password_digest: password_digest)
+            rescue ex : ::DB::Error
+              if ex.message.try(&.downcase).to_s.includes?("unique")
+                raise Core::Errors::ConflictError.new("A user with this email already exists.")
+              end
+              raise ex
             end
-            raise ex
-          end
 
-          now = Time.utc
-          session_id = generate_id("ses")
-          session_family_id = generate_id("fam")
-          issued_tokens = @token_provider.issue_token_pair(user.id, session_id, session_family_id, nil, now: now)
-          refresh_token_hash = @token_fingerprint.digest(issued_tokens.refresh_token)
+            now = Time.utc
+            session_id = generate_id("ses")
+            session_family_id = generate_id("fam")
+            issued_tokens = @token_provider.issue_token_pair(user.id, session_id, session_family_id, nil, now: now)
+            refresh_token_hash = @token_fingerprint.digest(issued_tokens.refresh_token)
 
-          @session_repository.create(
-            id: session_id,
-            user_id: user.id,
-            session_family_id: session_family_id,
-            refresh_token_hash: refresh_token_hash,
-            expires_at: issued_tokens.refresh_expires_at,
-            user_agent: user_agent,
-            ip_address: ip_address
-          )
+            session_repository.create(
+              id: session_id,
+              user_id: user.id,
+              session_family_id: session_family_id,
+              refresh_token_hash: refresh_token_hash,
+              expires_at: issued_tokens.refresh_expires_at,
+              user_agent: user_agent,
+              ip_address: ip_address
+            )
 
-          publish_event(UserCreated.new(user.id, normalized_email))
-          issued_tokens.to_response
+            publish_event(UserCreated.new(user.id, normalized_email), txn.connection)
+            issued_tokens.to_response
+          end.not_nil!
         end
 
         def login(email : String, password : String, user_agent : String?, ip_address : String?) : Infrastructure::Jwt::TokenPairResponse
@@ -87,9 +92,9 @@ module KemalcrStarter
               ip_address: ip_address
             )
             user_repository.touch_last_login(user.not_nil!.id, now)
+            publish_event(UserLoggedIn.new(user.not_nil!.id), connection)
           end
 
-          publish_event(UserLoggedIn.new(user.not_nil!.id))
           issued_tokens.to_response
         end
 
@@ -151,14 +156,18 @@ module KemalcrStarter
 
         def logout(access_token : String) : Nil
           claims = authenticate_access_token(access_token)
-          @session_repository.revoke(claims.session_id, Time.utc)
-          publish_event(SessionRevoked.new(claims.user_id, claims.session_id))
+          @database.transaction do |txn|
+            Infrastructure::DB::UserSessionRepository.new(txn.connection).revoke(claims.session_id, Time.utc)
+            publish_event(SessionRevoked.new(claims.user_id, claims.session_id), txn.connection)
+          end
         end
 
         def logout_all(access_token : String) : Nil
           claims = authenticate_access_token(access_token)
-          @session_repository.revoke_all_for_user(claims.user_id, Time.utc)
-          publish_event(UserLoggedOut.new(claims.user_id))
+          @database.transaction do |txn|
+            Infrastructure::DB::UserSessionRepository.new(txn.connection).revoke_all_for_user(claims.user_id, Time.utc)
+            publish_event(UserLoggedOut.new(claims.user_id), txn.connection)
+          end
         end
 
         def switch_active_organization(access_token : String, organization_id : String, user_agent : String?, ip_address : String?) : Infrastructure::Jwt::TokenPairResponse
@@ -237,9 +246,8 @@ module KemalcrStarter
           raise Core::Errors::UnauthorizedError.new("Refresh token is invalid or expired.")
         end
 
-        private def publish_event(event : Core::Events::DomainEvent) : Nil
-          repo = @event_repository
-          repo.try(&.create(event))
+        private def publish_event(event : Core::Events::DomainEvent, connection : ::DB::Connection) : Nil
+          @event_repository.not_nil!.create(event, connection: connection)
         end
       end
     end
