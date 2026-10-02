@@ -15,6 +15,7 @@ module KemalcrStarter
           @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
           @organization_repository = Infrastructure::DB::OrganizationRepository.new(@database)
           @secret_hasher = Infrastructure::Crypto::ApiKeySecretHasher.new(@settings.password_pepper)
+          @event_repository ||= Infrastructure::DB::OutboxEventRepository.new(@database)
         end
 
         def list_for_actor(actor_id : String, organization_id : String, limit : Int32 = 1000, offset : Int32 = 0)
@@ -40,15 +41,18 @@ module KemalcrStarter
           raise Core::Errors::ValidationError.new if normalized_name.empty?
 
           secret = @secret_hasher.generate_secret
-          created = @api_key_repository.create(
-            generate_id("key"),
-            organization_id,
-            normalized_name,
-            @secret_hasher.prefix(secret),
-            @secret_hasher.hash(secret)
-          )
-
-          publish_event(ApiKeyCreated.new(created.id, organization_id, normalized_name))
+          created = @database.transaction do |txn|
+            repository = Infrastructure::DB::ApiKeyRepository.new(txn.connection)
+            key = repository.create(
+              generate_id("key"),
+              organization_id,
+              normalized_name,
+              @secret_hasher.prefix(secret),
+              @secret_hasher.hash(secret)
+            )
+            publish_event(ApiKeyCreated.new(key.id, organization_id, normalized_name), txn.connection)
+            key
+          end.not_nil!
           serialize_created_api_key(created, secret)
         end
 
@@ -60,8 +64,11 @@ module KemalcrStarter
           api_key = @api_key_repository.find_active_for_organization(api_key_id, organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke API keys for this organization.") unless api_key
 
-          @api_key_repository.revoke(api_key_id, Time.utc)
-          publish_event(ApiKeyRevoked.new(api_key_id, organization_id))
+          @database.transaction do |txn|
+            revoked = Infrastructure::DB::ApiKeyRepository.new(txn.connection).revoke(api_key_id, Time.utc)
+            raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke API keys for this organization.") unless revoked
+            publish_event(ApiKeyRevoked.new(api_key_id, organization_id), txn.connection)
+          end
         end
 
         def authenticate(secret : String) : AuthenticatedApiKey
@@ -105,9 +112,8 @@ module KemalcrStarter
           }
         end
 
-        private def publish_event(event : Core::Events::DomainEvent) : Nil
-          repo = @event_repository
-          repo.try(&.create(event))
+        private def publish_event(event : Core::Events::DomainEvent, connection : ::DB::Connection) : Nil
+          @event_repository.not_nil!.create(event, connection: connection)
         end
       end
     end

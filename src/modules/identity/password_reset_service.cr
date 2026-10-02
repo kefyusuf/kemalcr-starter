@@ -14,6 +14,7 @@ module KemalcrStarter
           @user_repository = Infrastructure::DB::UserRepository.new(@database)
           @token_repository = Infrastructure::DB::PasswordResetTokenRepository.new(@database)
           @session_repository = Infrastructure::DB::UserSessionRepository.new(@database)
+          @event_repository ||= Infrastructure::DB::OutboxEventRepository.new(@database)
         end
 
         # Always succeeds from the caller's perspective to avoid user enumeration.
@@ -59,9 +60,8 @@ module KemalcrStarter
             token_repository.mark_used!(record.id)
             token_repository.invalidate_active_for_user(user.id)
             session_repository.revoke_all_for_user(user.id, Time.utc)
+            publish_event(UserPasswordReset.new(user.id, user.email), connection)
           end
-
-          publish_event(UserPasswordReset.new(user.id, user.email))
         end
 
         private def generate_id(prefix : String) : String
@@ -75,9 +75,8 @@ module KemalcrStarter
           raise Core::Errors::ValidationError.new("Password must include at least one digit.") unless password =~ /\d/
         end
 
-        private def publish_event(event : Core::Events::DomainEvent) : Nil
-          repo = @event_repository
-          repo.try(&.create(event))
+        private def publish_event(event : Core::Events::DomainEvent, connection : ::DB::Connection) : Nil
+          @event_repository.not_nil!.create(event, connection: connection)
         end
       end
     end

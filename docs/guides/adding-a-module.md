@@ -72,6 +72,8 @@ end
 
 ## 8. Tests
 
+- Bind domain writes and outbox inserts to one transaction connection; see [identity and API-key producer atomicity](identity-api-key-outbox-atomicity.md).
+
 - Unit/service spec with a seeded org + actor (`spec/products_spec.cr`)
 - Extend `TestDatabase.truncate_all!` with the new table(s)
 - Cover RBAC denial as well as the happy path
