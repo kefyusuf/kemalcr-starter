@@ -10,6 +10,7 @@ module KemalcrStarter
           @organization_repository = Infrastructure::DB::OrganizationRepository.new(@database)
           @membership_repository = Infrastructure::DB::OrganizationMembershipRepository.new(@database)
           @user_repository = Infrastructure::DB::UserRepository.new(@database)
+          @event_repository ||= Infrastructure::DB::OutboxEventRepository.new(@database)
         end
 
         def list_for_actor(actor_id : String, limit : Int32 = 1000, offset : Int32 = 0)
@@ -60,10 +61,10 @@ module KemalcrStarter
 
             created = organization_repository.create(organization_id, normalized_slug, normalized_name, actor_id)
             membership_repository.create(membership_id, organization_id, actor_id, "owner", joined_at: Time.utc)
+            publish_event(OrganizationCreated.new(organization_id, normalized_name, actor_id), connection)
             created
           end.not_nil!
 
-          publish_event(OrganizationCreated.new(organization_id, normalized_name, actor_id))
           serialize_organization(organization)
         rescue ::DB::Error
           raise Core::Errors::ConflictError.new("Organization slug already exists.")
@@ -79,10 +80,13 @@ module KemalcrStarter
           raise Core::Errors::ValidationError.new if normalized_slug == "" || normalized_name == ""
           raise Core::Errors::ValidationError.new if normalized_slug.nil? && normalized_name.nil?
 
-          organization = @organization_repository.update(organization_id, normalized_slug, normalized_name)
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot update this organization.") unless organization
-
-          publish_event(OrganizationUpdated.new(organization_id))
+          organization = @database.transaction do |txn|
+            repository = Infrastructure::DB::OrganizationRepository.new(txn.connection)
+            updated = repository.update(organization_id, normalized_slug, normalized_name)
+            raise Core::Errors::ForbiddenError.new("The authenticated actor cannot update this organization.") unless updated
+            publish_event(OrganizationUpdated.new(organization_id), txn.connection)
+            updated
+          end
           serialize_organization(organization.not_nil!)
         rescue ::DB::Error
           raise Core::Errors::ConflictError.new("Organization slug already exists.")
@@ -153,16 +157,19 @@ module KemalcrStarter
           invitee = @user_repository.find_credentials_by_email(normalized_email)
           raise Core::Errors::ValidationError.new("Invitee must exist and be active.") unless invitee && invitee.not_nil!.status == "active"
 
-          created = @membership_repository.create(
-            generate_id("mem"),
-            organization_id,
-            invitee.not_nil!.id,
-            normalized_role,
-            status: "pending",
-            invited_by_user_id: actor_id
-          )
-
-          publish_event(MembershipInvited.new(created.id, organization_id, normalized_email, normalized_role))
+          created = @database.transaction do |txn|
+            repository = Infrastructure::DB::OrganizationMembershipRepository.new(txn.connection)
+            invitation = repository.create(
+              generate_id("mem"),
+              organization_id,
+              invitee.not_nil!.id,
+              normalized_role,
+              status: "pending",
+              invited_by_user_id: actor_id
+            )
+            publish_event(MembershipInvited.new(invitation.id, organization_id, normalized_email, normalized_role), txn.connection)
+            invitation
+          end.not_nil!
           serialize_invitation(created)
         rescue ::DB::Error
           raise Core::Errors::ConflictError.new("An invitation or membership already exists for this user.")
@@ -177,10 +184,13 @@ module KemalcrStarter
           organization = @organization_repository.find_active(organization_id)
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot accept this invitation.") unless organization
 
-          activated = @membership_repository.update_status(invitation_id, "active", Time.utc)
-          raise Core::Errors::ForbiddenError.new("The authenticated actor cannot accept this invitation.") unless activated
-
-          publish_event(MembershipAccepted.new(invitation_id, organization_id))
+          activated = @database.transaction do |txn|
+            repository = Infrastructure::DB::OrganizationMembershipRepository.new(txn.connection)
+            updated = repository.update_status(invitation_id, "active", Time.utc)
+            raise Core::Errors::ForbiddenError.new("The authenticated actor cannot accept this invitation.") unless updated
+            publish_event(MembershipAccepted.new(invitation_id, organization_id), txn.connection)
+            updated
+          end
           serialize_membership(activated.not_nil!)
         end
 
@@ -193,8 +203,12 @@ module KemalcrStarter
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless invitation
           raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless invitation.not_nil!.organization_id == organization_id
 
-          @membership_repository.update_status(invitation_id, "revoked")
-          publish_event(MembershipRevoked.new(invitation_id, organization_id))
+          @database.transaction do |txn|
+            repository = Infrastructure::DB::OrganizationMembershipRepository.new(txn.connection)
+            revoked = repository.update_status(invitation_id, "revoked")
+            raise Core::Errors::ForbiddenError.new("The authenticated actor cannot revoke this invitation.") unless revoked
+            publish_event(MembershipRevoked.new(invitation_id, organization_id), txn.connection)
+          end
           nil
         end
 
@@ -241,9 +255,8 @@ module KemalcrStarter
           role == "admin" || role == "member"
         end
 
-        private def publish_event(event : Core::Events::DomainEvent) : Nil
-          repo = @event_repository
-          repo.try(&.create(event))
+        private def publish_event(event : Core::Events::DomainEvent, connection : ::DB::Connection) : Nil
+          @event_repository.not_nil!.create(event, connection: connection)
         end
       end
     end

@@ -72,6 +72,8 @@ end
 
 ## 8. Tests
 
+- Commit domain writes and outbox inserts through the same transaction connection; see [organization producer atomicity](organization-outbox-atomicity.md).
+
 - Unit/service spec with a seeded org + actor (`spec/products_spec.cr`)
 - Extend `TestDatabase.truncate_all!` with the new table(s)
 - Cover RBAC denial as well as the happy path
