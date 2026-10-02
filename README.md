@@ -20,6 +20,8 @@ Identity, organizations, API keys, RBAC, idempotent writes, an outbox event bus,
 
 ## Quick start (5 minutes)
 
+Platform event diagnostics, dead-letter recovery and global RBAC endpoints require a separate operator credential and are disabled by default. See [operator access](docs/guides/operator-access.md) for configuration and upgrade instructions.
+
 **Prerequisites:** Docker with Compose v2.
 
 ```sh

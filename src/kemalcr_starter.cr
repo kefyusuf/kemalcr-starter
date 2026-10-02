@@ -9,6 +9,7 @@ require "./core/idempotency/service"
 require "./core/logging/request_log_context"
 require "./core/logging/access_log_handler"
 require "./core/security/security_headers_handler"
+require "./core/security/operator_access"
 require "./core/security/cors_handler"
 require "./core/tenancy/authentication_handler"
 require "./core/events/events"
@@ -386,6 +387,7 @@ module KemalcrStarter
       end
 
       get "/events/metrics" do |env|
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
         stats = outbox_publisher.stats
         env.status(200).json(
           {
@@ -400,6 +402,7 @@ module KemalcrStarter
       end
 
       get "/events/dead-letter" do |env|
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
         repo = Infrastructure::DB::OutboxEventRepository.new(
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
         )
@@ -419,6 +422,7 @@ module KemalcrStarter
       end
 
       post "/events/dead-letter/:id/requeue" do |env|
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
         repo = Infrastructure::DB::OutboxEventRepository.new(
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
         )
@@ -431,8 +435,7 @@ module KemalcrStarter
       end
 
       get "/rbac/permissions" do |env|
-        actor_id = request_context(env).actor_id
-        raise Core::Errors::UnauthorizedError.new unless actor_id
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
 
         perms = Core::Rbac::Permission.values.map do |p|
           {name: p.to_s, roles: rbac_service.roles_for_permission(p)}
@@ -441,8 +444,7 @@ module KemalcrStarter
       end
 
       get "/rbac/roles" do |env|
-        actor_id = request_context(env).actor_id
-        raise Core::Errors::UnauthorizedError.new unless actor_id
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
 
         repo = Infrastructure::DB::RbacRepository.new(
           Infrastructure::DB::ConnectionManager.client(settings.database_url)
@@ -454,16 +456,14 @@ module KemalcrStarter
       end
 
       post "/rbac/roles/seed" do |env|
-        actor_id = request_context(env).actor_id
-        raise Core::Errors::UnauthorizedError.new unless actor_id
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
 
         rbac_service.seed_default_roles!
         env.status(200).json({status: "seeded", request_id: request_context(env).request_id})
       end
 
       delete "/rbac/roles/:role/permissions/:permission" do |env|
-        actor_id = request_context(env).actor_id
-        raise Core::Errors::UnauthorizedError.new unless actor_id
+        Core::Security::OperatorAccess.authorize!(env, settings.operator_token)
 
         role_name = env.params.url["role"]
         perm_name = env.params.url["permission"]
