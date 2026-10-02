@@ -38,7 +38,8 @@ module KemalcrStarter
         stripe_api_key : String?,
         stripe_webhook_secret : String?,
         stripe_webhook_tolerance_seconds : Int32,
-        enabled_modules : Array(String) do
+        enabled_modules : Array(String),
+        operator_token : String? = nil do
         def self.from_env(*, version : String) : Settings
           environment = ENV["KEMAL_ENV"]? || "development"
 
@@ -79,7 +80,8 @@ module KemalcrStarter
             stripe_api_key: ENV["STRIPE_API_KEY"]?,
             stripe_webhook_secret: ENV["STRIPE_WEBHOOK_SECRET"]?,
             stripe_webhook_tolerance_seconds: ENV["STRIPE_WEBHOOK_TOLERANCE_SECONDS"]?.try(&.to_i) || 300,
-            enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks,products,billing").split(",").map(&.strip).reject(&.empty?)
+            enabled_modules: (ENV["ENABLED_MODULES"]? || "password_reset,webhooks,products,billing").split(",").map(&.strip).reject(&.empty?),
+            operator_token: ENV["OPERATOR_TOKEN"]?
           )
         end
       end

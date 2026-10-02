@@ -5,6 +5,7 @@ info:
   description: |
     API-first backend foundation built with Kemal and Crystal.
 tags:
+  - name: Platform Operator
   - name: System
   - name: Authentication
   - name: Password Reset
@@ -15,6 +16,100 @@ tags:
 servers:
   - url: http://localhost:3000
 paths:
+  /events/metrics:
+    get:
+      tags: [Platform Operator]
+      summary: Inspect publisher statistics
+      operationId: getEventMetrics
+      security: [{operatorAuth: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /events/dead-letter:
+    get:
+      tags: [Platform Operator]
+      summary: List global dead-letter metadata
+      operationId: listDeadLetters
+      security: [{operatorAuth: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /events/dead-letter/{id}/requeue:
+    post:
+      tags: [Platform Operator]
+      summary: Requeue a persisted dead-letter event
+      operationId: requeueDeadLetter
+      security: [{operatorAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Dead-letter record was not found.
+  /rbac/permissions:
+    get:
+      tags: [Platform Operator]
+      summary: Inspect the global permission catalog
+      operationId: getGlobalPermissions
+      security: [{operatorAuth: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /rbac/roles:
+    get:
+      tags: [Platform Operator]
+      summary: Inspect global role permissions
+      operationId: getGlobalRoles
+      security: [{operatorAuth: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /rbac/roles/seed:
+    post:
+      tags: [Platform Operator]
+      summary: Insert default global role permissions
+      operationId: seedGlobalRoles
+      security: [{operatorAuth: []}]
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /rbac/roles/{role}/permissions/{permission}:
+    delete:
+      tags: [Platform Operator]
+      summary: Remove a global role permission
+      operationId: removeGlobalPermission
+      security: [{operatorAuth: []}]
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema: {type: string}
+        - name: permission
+          in: path
+          required: true
+          description: Permission name such as organization:delete.
+          schema: {type: string}
+      responses:
+        '200':
+          $ref: '#/components/responses/OperatorSuccess'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
   /health:
     get:
       tags:
@@ -989,6 +1084,11 @@ components:
         minLength: 8
         maxLength: 255
   securitySchemes:
+    operatorAuth:
+      type: apiKey
+      in: header
+      name: X-Operator-Token
+      description: Dedicated platform credential; disabled when OPERATOR_TOKEN is unset or blank. Tenant credentials do not grant access.
     bearerAuth:
       type: http
       scheme: bearer
@@ -998,6 +1098,16 @@ components:
       in: header
       name: X-API-Key
   responses:
+    OperatorSuccess:
+      description: Operator action succeeded; response includes request_id and route-specific data.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [request_id]
+            properties:
+              request_id: {type: string}
+            additionalProperties: true
     UnauthorizedError:
       description: Authentication failed or credentials are missing.
       content:
