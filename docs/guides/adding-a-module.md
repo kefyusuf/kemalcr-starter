@@ -78,5 +78,7 @@ end
 
 ## Optional: fan-out
 
+Use [durable database consumer replay](consumer-replay.md) for transaction-bound effects and stable consumer identities. External delivery needs its own replay policy.
+
 Register a handler for your events (or `*` for all) via `HandlerRegistry`.
 Webhooks already subscribe to `*`, so new domain events are delivered automatically.

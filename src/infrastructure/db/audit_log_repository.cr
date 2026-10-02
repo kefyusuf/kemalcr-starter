@@ -25,10 +25,20 @@ module KemalcrStarter
           new_value : String? = nil,
           metadata : String? = nil,
         ) : Nil
-          exec <<-SQL, id, event_id, actor_id, action, resource_type, resource_id, old_value, new_value, metadata
-            INSERT INTO audit_logs (id, event_id, actor_id, action, resource_type, resource_id, old_value, new_value, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb)
-          SQL
+          ProcessedEventRepository.new(database).consume_once(event_id, "audit:#{action}") do |connection|
+            existing = connection.scalar <<-SQL, event_id, action, resource_type, resource_id
+              SELECT EXISTS (
+                SELECT 1 FROM audit_logs WHERE event_id = $1 AND action = $2
+                  AND resource_type = $3 AND resource_id = $4
+              )
+            SQL
+            unless existing.as(Bool)
+              connection.exec <<-SQL, id, event_id, actor_id, action, resource_type, resource_id, old_value, new_value, metadata
+                INSERT INTO audit_logs (id, event_id, actor_id, action, resource_type, resource_id, old_value, new_value, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb)
+              SQL
+            end
+          end
         end
 
         def list(action : String, limit : Int32 = 50, offset : Int32 = 0) : Array(AuditLogRecord)
