@@ -39,7 +39,7 @@ ARG APP_GIT_SHA=unknown
 
 WORKDIR /app
 
-RUN apk add --no-cache gc gmp libgcc libstdc++ pcre2 tzdata
+RUN apk add --no-cache ca-certificates gc gmp libgcc libstdc++ pcre2 tzdata
 
 ENV APP_VERSION=${APP_VERSION} \
     APP_BUILD_TIME=${APP_BUILD_TIME} \

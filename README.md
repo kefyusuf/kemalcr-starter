@@ -20,6 +20,8 @@ Identity, organizations, API keys, RBAC, idempotent writes, an outbox event bus,
 
 ## Quick start (5 minutes)
 
+Outbound webhooks require public HTTPS destinations on port 443. See [webhook egress protection](docs/guides/webhook-egress.md) for destination rules, local test setup and upgrade requirements.
+
 **Prerequisites:** Docker with Compose v2.
 
 ```sh
