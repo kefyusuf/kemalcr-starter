@@ -151,6 +151,7 @@ Copy or edit env values from [`.env.example`](.env.example). Highlights:
 ## Extending
 
 - Add a domain module: [`docs/guides/adding-a-module.md`](docs/guides/adding-a-module.md)
+- Release priorities and production gates: [`docs/guides/release-roadmap.md`](docs/guides/release-roadmap.md)
 - Architecture notes: [`docs/architecture/`](docs/architecture/)
 - Local development: [`docs/guides/local-development.md`](docs/guides/local-development.md)
 
