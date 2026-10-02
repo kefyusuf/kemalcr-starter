@@ -67,15 +67,16 @@ module KemalcrStarter
           end
         end
 
-        def list_active_for_event_type(event_type : String) : Array(WebhookEndpointRecord)
+        def list_active_for_event_type(organization_id : String, event_type : String) : Array(WebhookEndpointRecord)
           many(
             <<-SQL,
               SELECT id, organization_id, url, secret, description, event_types, active, created_by, created_at
               FROM webhook_endpoints
               WHERE active = TRUE
-                AND (cardinality(event_types) = 0 OR $1 = ANY(event_types))
+                AND organization_id = $1
+                AND (cardinality(event_types) = 0 OR $2 = ANY(event_types))
             SQL
-            event_type
+            organization_id, event_type
           ) do |rs|
             map_endpoint(rs)
           end

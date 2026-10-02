@@ -12,8 +12,10 @@ module KemalcrStarter
   class WebhookReceiver
     getter requests : Array(ReceivedHook)
     getter secret : String
+    property response_status : Int32 = 200
 
     @port : Int32 = 0
+    @server : HTTP::Server?
 
     def initialize(@secret : String)
       @requests = [] of ReceivedHook
@@ -26,14 +28,19 @@ module KemalcrStarter
         entry = ReceivedHook.new(headers: context.request.headers.dup, body: payload)
         @requests << entry
         @channel.send(entry)
-        context.response.status_code = 200
+        context.response.status_code = @response_status
         context.response.print "ok"
       end
 
       address = server.bind_tcp("127.0.0.1", 0)
+      @server = server
       @port = address.port
       spawn { server.listen }
       @port
+    end
+
+    def stop : Nil
+      @server.try(&.close)
     end
 
     def wait_for_request(timeout : Time::Span = 5.seconds) : ReceivedHook

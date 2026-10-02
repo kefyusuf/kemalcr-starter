@@ -118,7 +118,7 @@ Or run the full golden path in one shot:
 - Selected POST endpoints honor `Idempotency-Key` (Redis lock + PostgreSQL fingerprint)
 
 ### Outbound webhooks (pluggable)
-- Org-scoped endpoints, event-type filters (empty = all)
+- Org-scoped endpoints and delivery, event-type filters (empty = all tenant-owned events)
 - HMAC-SHA256 signed payloads (`X-Webhook-Signature: sha256=...`)
 - Delivery ledger; failures retry via outbox, then dead-letter
 

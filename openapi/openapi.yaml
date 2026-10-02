@@ -1474,7 +1474,7 @@ components:
           type: array
           items:
             type: string
-          description: Empty array subscribes to all events.
+          description: Event types owned by this organization. An empty array selects all tenant-owned events; global or unscoped events are not delivered.
     WebhookEndpoint:
       type: object
       required:

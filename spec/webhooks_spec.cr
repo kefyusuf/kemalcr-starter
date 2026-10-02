@@ -46,11 +46,11 @@ module KemalcrStarter
       service.create_endpoint(actor_id, org_id, "https://b.example.com", nil, [] of String)
 
       endpoints = Infrastructure::DB::WebhookEndpointRepository.new(TestDatabase.database)
-        .list_active_for_event_type("identity.user.created")
+        .list_active_for_event_type(org_id, "identity.user.created")
       endpoints.size.should eq(2)
 
       only_login = Infrastructure::DB::WebhookEndpointRepository.new(TestDatabase.database)
-        .list_active_for_event_type("identity.user.logged_in")
+        .list_active_for_event_type(org_id, "identity.user.logged_in")
       only_login.size.should eq(1)
       only_login.first.url.should eq("https://b.example.com")
     end

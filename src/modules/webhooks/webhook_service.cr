@@ -75,7 +75,10 @@ module KemalcrStarter
 
         # Called from the outbox event pipeline. Raises on failure so the publisher retries.
         def dispatch_event(event : Core::Events::DomainEvent) : Nil
-          endpoints = @endpoint_repository.list_active_for_event_type(event.event_type)
+          organization_id = event.organization_id
+          return if organization_id.nil? || organization_id.blank?
+
+          endpoints = @endpoint_repository.list_active_for_event_type(organization_id, event.event_type)
           return if endpoints.empty?
 
           payload = event.to_json
