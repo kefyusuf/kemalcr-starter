@@ -38,15 +38,27 @@ module KemalcrStarter
         def next_batch(batch_size : Int32 = 50) : Array(OutboxEventRecord)
           rows = many(
             <<-SQL,
+              WITH candidates AS MATERIALIZED (
+                SELECT id FROM outbox_events
+                WHERE status = 'pending'
+                  AND (locked_at IS NULL OR locked_at < clock_timestamp())
+                ORDER BY created_at, id
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+              ), claimed AS (
+                UPDATE outbox_events AS event
+                SET status = 'in_progress', locked_at = clock_timestamp(),
+                    polled_at = GREATEST(clock_timestamp(), event.polled_at + INTERVAL '1 microsecond'),
+                    updated_at = clock_timestamp()
+                FROM candidates
+                WHERE event.id = candidates.id
+                RETURNING event.*
+              )
               SELECT id::text, aggregate_type, aggregate_id, event_type, event_data::text,
                 correlation_id::text, causation_id::text, status, attempts, max_retries,
                 last_error, locked_at, polled_at, created_at, updated_at
-              FROM outbox_events
-              WHERE status = 'pending'
-                AND (locked_at IS NULL OR locked_at < NOW())
-              ORDER BY created_at ASC
-              LIMIT $1
-              FOR UPDATE SKIP LOCKED
+              FROM claimed
+              ORDER BY created_at, id
             SQL
             batch_size
           ) do |rs|
@@ -69,13 +81,44 @@ module KemalcrStarter
             )
           end
 
-          unless rows.empty?
-            rows.each do |r|
-              exec "UPDATE outbox_events SET status = 'in_progress', locked_at = NOW(), polled_at = NOW() WHERE id = $1", r.id
-            end
-          end
-
           rows
+        end
+
+        def mark_dispatched(event : OutboxEventRecord) : Bool
+          return false unless event.polled_at
+          result = exec <<-SQL, event.id, event.polled_at
+            UPDATE outbox_events SET status = 'dispatched', locked_at = NULL, updated_at = clock_timestamp()
+            WHERE id = $1 AND status = 'in_progress' AND polled_at = $2
+          SQL
+          result.rows_affected == 1
+        end
+
+        def increment_retry(event : OutboxEventRecord, error_message : String?, backoff_seconds : Int32 = 0) : Bool
+          return false unless event.polled_at
+          result = exec <<-SQL, event.id, event.polled_at, error_message, backoff_seconds
+            UPDATE outbox_events
+            SET status = 'pending', attempts = attempts + 1, last_error = $3,
+                locked_at = clock_timestamp() + $4::int * INTERVAL '1 second', updated_at = clock_timestamp()
+            WHERE id = $1 AND status = 'in_progress' AND polled_at = $2
+          SQL
+          result.rows_affected == 1
+        end
+
+        def move_to_dead_letter(event : OutboxEventRecord, failure_reason : String?) : Bool
+          return false unless event.polled_at
+          result = exec <<-SQL, event.id, event.polled_at, failure_reason
+            WITH moved AS (
+              UPDATE outbox_events
+              SET status = 'dead_letter', locked_at = NULL, last_error = $3, updated_at = clock_timestamp()
+              WHERE id = $1 AND status = 'in_progress' AND polled_at = $2
+              RETURNING *
+            )
+            INSERT INTO dead_letter_events (original_event_id, event_type, event_data, aggregate_type,
+              aggregate_id, correlation_id, causation_id, failure_reason, retry_count)
+            SELECT id, event_type, event_data, aggregate_type, aggregate_id,
+              correlation_id, causation_id, $3, attempts FROM moved
+          SQL
+          result.rows_affected == 1
         end
 
         def mark_dispatched(event_id : String) : Nil

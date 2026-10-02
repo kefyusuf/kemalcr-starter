@@ -78,5 +78,7 @@ end
 
 ## Optional: fan-out
 
+Read [outbox claims and recovery](outbox-claims-and-recovery.md) for worker ownership and replay limits. Handlers must tolerate redelivery.
+
 Register a handler for your events (or `*` for all) via `HandlerRegistry`.
 Webhooks already subscribe to `*`, so new domain events are delivered automatically.
