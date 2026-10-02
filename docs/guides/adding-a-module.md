@@ -34,6 +34,7 @@ Add a migration pair under `db/migrations/`:
 - Constructor: `settings`, `database`, optional `OutboxEventRepository`
 - Call `@rbac_service.authorize!` at the start of each use case
 - Publish domain events inside the business transaction path
+- Bind both the business repository and outbox write to `txn.connection`; see [product outbox atomicity](product-outbox-atomicity.md) for the verified pattern.
 - Return view records, not raw DB rows
 
 ## 5. Routes
